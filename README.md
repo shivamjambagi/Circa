@@ -8,7 +8,7 @@ Instead of keeping relationships buried in lists, notes or spreadsheets, Circa t
 
 ## Live Demo
 
-### [Open Circa](https://circaa.netlify.app/)
+### In development
 
 > Circa is currently available as a public beta.
 

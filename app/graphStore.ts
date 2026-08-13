@@ -16,6 +16,7 @@ export type Accent =
   | "rose" | "mint" | "aqua" | "coral" | "graphite";
 
 export type ProjectCategory = "personal" | "school" | "business" | "family" | "community" | "other";
+export type ProjectMode = "map" | "community" | "network";
 
 /** Identity/contact fields shared between projects. Project notes deliberately do not live here. */
 export type GlobalPerson = {
@@ -55,7 +56,7 @@ export type Person = Omit<GlobalPerson, "id"> & {
   width?: number;
   height?: number;
   accent: Accent;
-  createdVia?: "manual" | "compose" | "csv";
+  createdVia?: "manual" | "compose" | "csv" | "linkedin";
   isSelf?: boolean;
 };
 
@@ -112,6 +113,8 @@ export type Graph = {
 export type CircaProject = {
   id: string;
   name: string;
+  projectMode: ProjectMode;
+  schemaVersion: number;
   category: ProjectCategory;
   customCategoryName: string;
   folderId: string;
@@ -225,9 +228,9 @@ export function createEmptyWorkspace(): Workspace {
   return { version: 3, revision: 0, projects: [], folders: [], globalPeople: [], activeProjectId: "", updatedAt: now };
 }
 
-export function createProject(name: string, category: ProjectCategory, customCategoryName = ""): CircaProject {
+export function createProject(name: string, category: ProjectCategory, customCategoryName = "", projectMode: ProjectMode = "map"): CircaProject {
   const now = new Date().toISOString();
-  return { id: createId("project"), name: name.trim().slice(0, 80) || "Untitled project", category, customCategoryName: customCategoryName.slice(0, 80), folderId: "", archived: false, favourite: false, customRelationshipLabels: [], graph: createInitialGraph(), createdAt: now, updatedAt: now };
+  return { id: createId("project"), name: name.trim().slice(0, 80) || "Untitled project", projectMode, schemaVersion: 1, category, customCategoryName: customCategoryName.slice(0, 80), folderId: "", archived: false, favourite: false, customRelationshipLabels: [], graph: createInitialGraph(), createdAt: now, updatedAt: now };
 }
 
 function normalizeGlobalPerson(value: unknown, now: string): GlobalPerson | null {
@@ -256,7 +259,7 @@ function normalizePerson(value: unknown, now: string, index: number): Person | n
     yearGroup: text(raw.yearGroup, "", 100), subject: text(raw.subject, "", 180), knownSince: text(raw.knownSince, "", 100), sharedInterests: text(raw.sharedInterests, "", 500), contextRole: text(raw.contextRole, "", 180),
     x: finite(raw.x, 520 + (index % 5) * 170), y: finite(raw.y, 300 + Math.floor(index / 5) * 210), width: typeof raw.width === "number" ? Math.min(420, Math.max(96, finite(raw.width, 134))) : undefined, height: typeof raw.height === "number" ? Math.min(420, Math.max(110, finite(raw.height, 164))) : undefined,
     accent: ACCENTS.has(raw.accent as Accent) ? raw.accent as Accent : isSelf ? "yellow" : "blue",
-    createdVia: raw.createdVia === "compose" || raw.createdVia === "csv" ? raw.createdVia : "manual", isSelf,
+    createdVia: raw.createdVia === "compose" || raw.createdVia === "csv" || raw.createdVia === "linkedin" ? raw.createdVia : "manual", isSelf,
     createdAt: iso(raw.createdAt, now), updatedAt: iso(raw.updatedAt, now),
   };
 }
@@ -344,7 +347,8 @@ export function normalizeWorkspace(value: unknown): Workspace | null {
     if (!item || typeof item !== "object") return [];
     const project = item as Record<string, unknown>; const name = text(project.name, "Untitled project", 80).trim() || "Untitled project";
     const category = ["personal", "school", "business", "family", "community", "other"].includes(String(project.category)) ? project.category as ProjectCategory : "personal";
-    return [{ id: text(project.id, createId("project"), 160), name, category, customCategoryName: text(project.customCategoryName, "", 80), folderId: text(project.folderId, "", 160), archived: Boolean(project.archived), favourite: Boolean(project.favourite), customRelationshipLabels: Array.isArray(project.customRelationshipLabels) ? [...new Set(project.customRelationshipLabels.map((label) => text(label, "", 120).trim()).filter(Boolean))].slice(0, 40) : [], graph: normalizeGraph(project.graph), createdAt: iso(project.createdAt, now), updatedAt: iso(project.updatedAt, now) }];
+    const projectMode: ProjectMode = project.projectMode === "community" || project.projectMode === "network" ? project.projectMode : "map";
+    return [{ id: text(project.id, createId("project"), 160), name, projectMode, schemaVersion: Math.max(1, Math.floor(finite(project.schemaVersion, 1))), category, customCategoryName: text(project.customCategoryName, "", 80), folderId: text(project.folderId, "", 160), archived: Boolean(project.archived), favourite: Boolean(project.favourite), customRelationshipLabels: Array.isArray(project.customRelationshipLabels) ? [...new Set(project.customRelationshipLabels.map((label) => text(label, "", 120).trim()).filter(Boolean))].slice(0, 40) : [], graph: normalizeGraph(project.graph), createdAt: iso(project.createdAt, now), updatedAt: iso(project.updatedAt, now) }];
   });
   const folders: CircaFolder[] = raw.folders.flatMap((item) => {
     if (!item || typeof item !== "object") return [];
@@ -362,7 +366,7 @@ export function normalizeWorkspace(value: unknown): Workspace | null {
 function migrateLegacyGraph(raw: string): Workspace {
   const now = new Date().toISOString(); let graph = createInitialGraph();
   try { graph = normalizeGraph(JSON.parse(raw)); } catch { /* the caller can still open a safe workspace */ }
-  const project: CircaProject = { id: createId("project"), name: "My Network", category: "personal", customCategoryName: "", folderId: "", archived: false, favourite: false, customRelationshipLabels: [], graph, createdAt: now, updatedAt: graph.updatedAt };
+  const project: CircaProject = { id: createId("project"), name: "My Network", projectMode: "map", schemaVersion: 1, category: "personal", customCategoryName: "", folderId: "", archived: false, favourite: false, customRelationshipLabels: [], graph, createdAt: now, updatedAt: graph.updatedAt };
   return { version: 3, revision: 0, projects: [project], folders: [], globalPeople: globalsFromProjects([project]), activeProjectId: project.id, updatedAt: now };
 }
 

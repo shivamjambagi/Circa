@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import SketchCanvas from "./SketchCanvas";
 import { CreateProjectView, ProjectHub } from "./ProjectHub";
 import { CircaProject, createEmptyWorkspace, createProject, createWorkspaceStore, getTabSessionId, Workspace } from "./graphStore";
+import { useFirebaseUser } from "./firebase/FirebaseProvider";
 
 type PreviewPerson = {
   name: string;
@@ -40,6 +41,9 @@ function PersonCard({ person, you = false }: { person: PreviewPerson; you?: bool
 }
 
 function Landing({ onStart }: { onStart: () => void }) {
+  const { user } = useFirebaseUser();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const lastCommunity = useSyncExternalStore(() => () => undefined, () => { try { return window.localStorage.getItem("circa_last_community") || ""; } catch { return ""; } }, () => "");
   return (
     <main className="site-shell">
       <header className="landing-nav">
@@ -47,11 +51,12 @@ function Landing({ onStart }: { onStart: () => void }) {
           <Mark />
           <span className="brand-name">Circa<sup>beta</sup></span>
         </a>
-        <nav aria-label="Main navigation">
+        <button className="mobile-menu-button" aria-expanded={menuOpen} onClick={() => setMenuOpen(!menuOpen)}>Menu</button><nav className={menuOpen ? "open" : ""} aria-label="Main navigation">
           <a href="#how">How it works</a>
-          <a href="#about">About</a>
-          <button className="nav-plain" onClick={onStart}>Workspace</button>
-          <button className="button button-small button-outline" onClick={onStart}>Start sketching</button>
+          <a href="#communities">Communities</a>
+          <a href="#network">Network</a>
+          <a href={user && !user.isAnonymous ? "/account" : "/auth"}>{user && !user.isAnonymous ? "Account" : "Sign in"}</a>
+          <button className="button button-small button-outline" onClick={onStart}>Open Circa</button>
         </nav>
       </header>
 
@@ -64,7 +69,7 @@ function Landing({ onStart }: { onStart: () => void }) {
             <button className="button button-dark" onClick={onStart}>Open Circa <span>↗</span></button>
             <a className="button button-paper" href="#how">See how it works <span>↓</span></a>
           </div>
-          <p className="privacy-note">✦ Your maps are saved in this browser. No account is required. Export a backup anytime.<small>Different browsers and devices do not sync automatically.</small></p>
+          <p className="privacy-note">✦ Personal maps stay local by default.<small>Accounts are only needed for shared Communities, Networks and optional cloud features. Export a backup anytime.</small></p>
         </div>
 
         <div className="network-preview" aria-label="Example relationship sketch">
@@ -92,6 +97,17 @@ function Landing({ onStart }: { onStart: () => void }) {
         <article><span className="feature-icon blue">↗</span><div><strong>Sketch connections</strong><p>Draw the people in your world.</p></div></article>
         <article><span className="feature-icon sage">≋</span><div><strong>See closeness</strong><p>Understand relationships visually.</p></div></article>
         <article><span className="feature-icon peach">∞</span><div><strong>Remember introductions</strong><p>See how your network formed.</p></div></article>
+      </section>
+
+      {lastCommunity && user?.isAnonymous && <aside className="return-community"><span>Temporary Community session</span><a href={`/community/${lastCommunity}`}>Return to your Community →</a></aside>}
+
+      <section className="circa-paths" aria-labelledby="circa-paths-title">
+        <header><p className="eyebrow"><span /> One Circa</p><h2 id="circa-paths-title">However you know people,<br /><em>there&apos;s a place to understand it.</em></h2></header>
+        <div className="experience-grid">
+          <article className="experience-card map"><div className="mini-map" aria-hidden="true"><i className="mini-you">You</i><i>Maya</i><i>Sam</i><i>Daniel</i><span /><span /><span /></div><div><small>01 · Personal</small><h3>Map your people</h3><p>Sketch the people and relationships across your personal life, family, school and work.</p><button onClick={onStart}>Open Circa →</button></div></article>
+          <article className="experience-card network" id="network"><div className="mini-path" aria-hidden="true"><i>You</i><span>→</span><i>Maya</i><span>→</span><i>James</i><span>→</span><i>Priya</i></div><div><small>02 · Professional</small><h3>Bring in your network</h3><p>Import your LinkedIn connections and discover known pathways through the professional network available to you.</p><a href="/network/new">Explore Networks →</a></div></article>
+          <article className="experience-card community" id="communities"><div className="mini-community" aria-hidden="true"><small>Tomorrow</small><strong>Recycling</strong><span>Local services <b>18</b></span><span>Residents meeting <b>Thu</b></span><em>WhatsApp reminders · Connected</em></div><div><small>03 · Shared</small><h3>Circa Communities</h3><p>Keep useful local information, recommendations, reminders and community knowledge in one place.</p><a href="/community/new">Create a Community →</a></div></article>
+        </div><aside className="join-utility"><span>Already have a Community or Network invite?</span><a href="/join">Enter a code →</a></aside>
       </section>
 
       <section className="compose-demo" aria-label="Compose feature preview">

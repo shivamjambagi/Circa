@@ -1,0 +1,16 @@
+"use client";
+
+import { FormEvent, useState } from "react";
+import { useRouter } from "next/navigation";
+import { createCommunity } from "../../cloud/communityRepository";
+import { useFirebaseUser } from "../../firebase/FirebaseProvider";
+
+export default function CreateCommunityPage() {
+  const router = useRouter();
+  const { user, loading } = useFirebaseUser();
+  const [name, setName] = useState(""); const [location, setLocation] = useState(""); const [description, setDescription] = useState(""); const [sections, setSections] = useState(""); const [timezone, setTimezone] = useState("Europe/London");
+  const [busy, setBusy] = useState(false); const [error, setError] = useState("");
+  async function submit(event: FormEvent) { event.preventDefault(); if (!user || user.isAnonymous) return; setBusy(true); setError(""); try { const id = await createCommunity(user, { name, location, description, sections: sections.split("\n").filter(Boolean), timezone }); router.push(`/community/${id}`); } catch (next) { setError(next instanceof Error ? next.message : "Circa could not create this Community."); setBusy(false); } }
+  return <main className="cloud-page"><header className="cloud-header"><a className="brand" href="/"><span className="brand-mark"><i /><i /></span><span className="brand-name">Circa<sup>beta</sup></span></a><a href="/">Back to Circa</a></header><section className="cloud-hero"><p className="eyebrow"><span /> Circa Communities</p><h1>Create a useful<br /><em>Community space.</em></h1><p>Members can read approved information and suggest changes. You stay in control of what becomes published.</p></section>
+    <section className="paper-panel create-community-panel">{loading ? <p>Checking your account…</p> : !user || user.isAnonymous ? <div className="auth-required"><h2>A permanent account keeps this Community safe.</h2><p>Create or sign in to your Circa account before becoming the owner.</p><a className="button button-dark" href="/auth?returnTo=/community/new">Create account or sign in</a></div> : <form onSubmit={submit} className="community-form"><label>Community name<input required maxLength={80} value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Prestwich Community" /></label><label>Location<input maxLength={120} value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Town, neighbourhood or shared place" /></label><label>Description<textarea required maxLength={800} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="What this Community is for" /></label><label>Community timezone<select value={timezone} onChange={(e) => setTimezone(e.target.value)}><option>Europe/London</option><option>Europe/Dublin</option><option>America/New_York</option><option>America/Los_Angeles</option><option>Asia/Kolkata</option><option>Australia/Sydney</option></select></label><label>Custom initial sections <small>optional - Circa otherwise creates useful Community sections</small><textarea value={sections} onChange={(e) => setSections(e.target.value)} placeholder="One custom section per line" /></label><button className="button button-dark" disabled={busy}>{busy ? "Creating…" : "Create Community"}</button>{error && <p role="alert" className="form-message">{error}</p>}</form>}</section></main>;
+}

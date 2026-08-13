@@ -1,141 +1,60 @@
 # Circa
 
-**Map relationships. Understand connections.**
+Circa is a local-first relationship sketchbook. People are tactile paper cards, relationships are thread-like paths, and personal context can be organised with groups and pinned notes.
 
-Circa is a visual relationship mapping platform designed to make connections between people, groups and organisations easier to explore and understand.
+## What works
 
-Instead of keeping relationships buried in lists, notes or spreadsheets, Circa turns them into an interactive visual map where connections can be created, organised and explored.
+- Calm responsive landing page and full-screen sketch canvas
+- Add, select, edit, drag and safely remove people
+- Create and edit relationship threads, including “introduced by” context
+- Create and edit sketched groups and movable notes
+- Add people by voice in browsers that support the Web Speech API, with a typed-phrase fallback
+- Compose Create, Change and Ask flows with mandatory draft review before apply
+- Deterministic list/CSV import (up to 300 people), duplicate hints and cycle checks
+- Business Connections and Org Chart views powered by the same people
+- Visual graph questions for stored paths, teams, managers and reporting branches
+- Trackpad pan, anchored wheel/pinch zoom, touch pinch, fit-to-content, undo and redo
+- Flush-on-exit autosave, visible save errors, stale-tab write protection and downloadable/restorable workspace backups
+- Validated Workspace v3 migration with a retained v2 recovery copy
+- Inline GitHub and LinkedIn URL validation without scraping
+- Keyboard shortcuts and reduced-motion support
+- Mobile toolbar and detail bottom sheet
 
-## Live Demo
+## Local development
 
-### In development
+```bash
+npm install
+npm run dev
+```
 
-> Circa is currently available as a public beta.
+Circa V10 is deliberately local-first and requires no account or cloud database. Workspace data is saved under `circa_workspace_v3` in the current browser. Different devices and browsers do not sync automatically. Export a backup from the Project Hub or canvas More menu. The first v2 migration retains the original JSON under `circa_workspace_backup_v2`; a restore keeps the replaced Workspace under `circa_workspace_recovery_v10`.
 
----
+## Compose
 
-## What is Circa?
+Compose is a controlled language layer above the existing graph. It supports three intents:
 
-Circa helps users build visual maps of the relationships around them.
+- **Create** prepares people, relationships and groups as a temporary draft.
+- **Change** prepares a diff against people already on the current Project.
+- **Ask** runs deterministic queries against stored graph data and highlights the answer.
 
-A map can represent things such as:
+No Compose operation can mutate the canvas directly. Structured intent is validated, previewed and only applied after explicit confirmation. A confirmed batch is one undo transaction. Paste List and CSV work locally; free-form descriptions require an optional server-side provider. See `COMPOSE_SETUP.md`.
 
-- Family relationships
-- Friendship groups
-- Professional networks
-- Business structures
-- Organisations
-- Communities
-- Introductions between people
-- Connections across different groups
+CSV columns are matched from common names such as `name` / `full name` / `employee`, `role` / `job title` / `position`, and `manager` / `reports to` / `line manager`. Rows are parsed as data only, formula-like cells are blocked without rejecting `+44` phone numbers, and imports are limited to 300 people.
 
-The goal is to make complex relationship networks simple to understand visually.
+Business Projects can switch between **Connections** and **Org Chart**. The Org Chart reads the canonical `reportsToPersonId`, includes only explicit organisation members, prevents reporting cycles, supports multiple roots and companies, and can collapse branches.
 
----
+## Storage architecture
 
-## Core Features
+`app/graphStore.ts` defines the typed graph, Workspace migration, backup and local concurrency contracts. LocalStorage is the official V10 storage adapter. Project saves do not alter navigation state, and stale same-Project tabs must be reloaded or explicitly confirmed before replacing a newer version.
 
-### Interactive Relationship Maps
+## Shortcuts
 
-Create people and visually connect them to show how different individuals relate to one another.
+- `Cmd/Ctrl + Z`: undo
+- `Cmd/Ctrl + Shift + Z`: redo
+- `Delete` / `Backspace`: remove the selected item
+- `+` / `-`: zoom
+- `Escape`: cancel the active tool or close a panel
 
-### Groups
+## Privacy
 
-Organise people into groups while still allowing relationships to exist across different parts of the map.
-
-Groups can be resized freely to accommodate the structure of the network being created.
-
-### Multiple Map Styles
-
-Circa supports different ways of representing relationships depending on the context of the map, including personal and organisational structures.
-
-### Compose
-
-Build and edit relationship maps through a focused workspace designed around creating connections quickly.
-
-### Ask
-
-Circa can answer questions about the relationships represented on a map.
-
-Examples include:
-
-- **How is Sai connected to Shivam?**
-- **Who is Sai connected to?**
-- **Who introduced Shivam to Rithvik?**
-
-This allows users to explore a relationship map conversationally rather than manually tracing every connection.
-
-### Clean, Minimal Interface
-
-Circa uses a warm, minimal visual style focused on:
-
-- clear relationship structures
-- elegant typography
-- subtle borders
-- compact controls
-- responsive layouts
-- distraction-free interaction
-
----
-
-## Active Development
-
-Circa is currently in **active development**.
-
-The current version represents the first public beta and the project will continue to evolve as it is tested with real users.
-
-Future updates may include improvements to:
-
-- relationship intelligence
-- map navigation
-- larger network handling
-- Compose tools
-- Ask capabilities
-- organisation mapping
-- mobile usability
-- collaboration
-- sharing
-- import and export tools
-- performance
-- accessibility
-- user experience
-
-Feedback from early users will help shape which features are prioritised.
-
-**More updates are coming.**
-
----
-
-## Technology
-
-Circa is built using modern web technologies including:
-
-- TypeScript
-- React
-- Next.js
-- Vite
-- Node.js
-- Firebase
-- Drizzle
-- Git and GitHub
-
-The application is continuously deployed through Netlify.
-
----
-
-## Project Structure
-
-```text
-Circa/
-├── app/              # Main application
-├── db/               # Database configuration
-├── drizzle/          # Database migrations / metadata
-├── examples/         # Example implementations
-├── public/           # Public assets
-├── scripts/          # Build and deployment scripts
-├── tests/            # Automated tests
-├── worker/           # Worker functionality
-├── package.json
-├── next.config.ts
-├── vite.config.ts
-└── README.md
+The Workspace is stored in the current browser and is not cloud-synchronised. Export regular JSON backups from the Project Hub or canvas More menu. Voice recognition is supplied by the browser and may use the browser vendor's speech service. Free-form Compose sends only a reduced graph context to the configured server-side provider; Paste List, CSV and Ask stay local.

@@ -1,36 +1,71 @@
-# Connecting Firebase to Circa
+# Circa cloud setup
 
-Circa currently runs in local mode. Workspace data is stored in the browser under `circa_workspace_v3`; v1 graph and v2 workspace keys are migration inputs only. No data is sent to Firebase and the interface makes no cloud-sync claims.
+Circa remains local-first for ordinary maps. Firebase adds optional accounts, cloud migration, private Networks, Community membership, approved Community information, proposals and invitations. Netlify remains the intended public frontend and trusted function host.
 
-## Integration steps
+## Firebase project
 
-1. Create a Firebase project and a web app in the Firebase console.
-2. Copy `.env.example` to `.env.local` and fill in the six public web-app values. Never add Admin SDK credentials to browser-exposed variables.
-3. Add the official Firebase web SDK as a production dependency.
-4. Enable the authentication providers you intend to support. Add the deployed Circa hostname to Firebase Authentication's authorised domains.
-5. Create Firestore in production mode and deploy `firestore.rules`.
-6. Implement a `FirebaseGraphStore` that satisfies the `GraphStore` interface in `app/graphStore.ts`. Keep `LocalGraphStore` as the offline cache and safe fallback.
-7. Store each authenticated user's graph under `users/{uid}/sketches/{sketchId}`. Use the authenticated UID only; never trust a client-supplied owner ID.
-8. Debounce graph writes and preserve a local pending copy before syncing. A network failure must never replace newer local work with older cloud data.
+This checkout is configured for the existing Firebase project `circa-4bea4` and the default Firestore database in `europe-west2`.
 
-## Suggested adapter boundary
+The client uses the modular Firebase Web SDK. App Check is initialised before Auth and Firestore with `ReCaptchaEnterpriseProvider`, site key `6Leb-lEtAAAAAJVLLrjf2-P9_VsmU-94LMH5MhA3`, and automatic token refresh. Do not enable App Check enforcement until legitimate production Auth, Firestore, anonymous invitation joins and proposal writes appear in Firebase App Check metrics.
 
-```ts
-class FirebaseGraphStore implements GraphStore {
-  loadGraph(): Promise<Graph>;
-  saveGraph(graph: Graph): Promise<void>;
-  saveGraphNow(graph: Graph): void;
-  clearGraph(): Promise<void>;
-}
+Authentication providers expected in Firebase Console:
+
+- Email/password
+- Google
+- Anonymous (used only after explicit Community join consent)
+
+The authorized domains must include `circaa.netlify.app` and the development host you use.
+
+## Firestore rules and indexes
+
+Production rules are in `firestore.rules`; composite indexes are in `firestore.indexes.json`. The configuration deliberately contains no Firebase Hosting section.
+
+Deploy from the repository root with an authenticated Firebase CLI:
+
+```bash
+firebase deploy --project circa-4bea4 --only firestore:rules,firestore:indexes
 ```
 
-Switch adapters only after Firebase initialises successfully and an authenticated user is available. Until then, use `LocalGraphStore` and label the state as “Saved locally”.
+Run the database-level rules suite with:
 
-## Security checklist
+```bash
+npm run test:firestore
+```
 
-- Do not use a Firebase Admin key in the browser.
-- Keep Firestore rules owner-scoped.
-- Validate graph shape before rendering downloaded data.
-- Add App Check only after the core authenticated flow works.
-- Test signed-out reads and cross-user reads; both must fail.
-- Do not enable GitHub or LinkedIn scraping. Circa stores only URLs entered by the user.
+The rules enforce member proposals, admin publication/review, cross-Community isolation, private Network ownership, explicit project-visible Network contributions, exact public invite/code reads without public listing, and complete client denial for server-owned WhatsApp collections.
+
+## Existing local data
+
+`circa_workspace_v3` remains the working local source for existing map projects. On a permanent account, `/auth` offers an explicit copy to cloud. Before copying, Circa retains a local backup. The migration uses a per-user `localWorkspaceV3` marker, is safe to retry, verifies the completion marker, and never deletes the local workspace.
+
+## Netlify environment variables
+
+Copy the names from `.env.example` into Netlify. Firebase client configuration and the App Check site key are public web configuration. The following are private server values and must never use a `NEXT_PUBLIC_` prefix:
+
+- `FIREBASE_ADMIN_PROJECT_ID`
+- `FIREBASE_ADMIN_CLIENT_EMAIL`
+- `FIREBASE_ADMIN_PRIVATE_KEY`
+- `META_WHATSAPP_ACCESS_TOKEN`
+- `META_WHATSAPP_PHONE_NUMBER_ID`
+- `META_WHATSAPP_BUSINESS_ACCOUNT_ID`
+- `META_APP_SECRET`
+- `META_WEBHOOK_VERIFY_TOKEN`
+- `META_GRAPH_API_VERSION`
+- `CIRCA_WHATSAPP_NUMBER`
+- `CIRCA_PUBLIC_URL` (set to `https://circaa.netlify.app`)
+
+When WhatsApp variables are absent, the Community UI shows an unavailable state and the rest of Circa continues normally.
+
+## Meta webhook
+
+After the Netlify variables are present, configure Meta's WhatsApp Cloud API webhook as:
+
+```text
+https://circaa.netlify.app/.netlify/functions/whatsapp-webhook
+```
+
+Use the exact value configured as `META_WEBHOOK_VERIFY_TOKEN`. POST bodies are verified with `X-Hub-Signature-256` against `META_APP_SECRET` before parsing. The scheduled reminder function is declared for every 15 minutes and deduplicates each recipient/occurrence before sending.
+
+## Netlify routing
+
+`netlify.toml` builds the existing Vinext app, publishes static assets, bundles Netlify Functions, and sends unmatched SPA/server routes—including `/join/*`, `/community/*` and `/network/*`—through the checked production worker adapter. `public/_redirects` mirrors that fallback.

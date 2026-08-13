@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import { Fraunces, Manrope } from "next/font/google";
-import "./globals.css";
+import { FirebaseProvider } from "./firebase/FirebaseProvider";
 
-const manrope = Manrope({ variable: "--font-manrope", subsets: ["latin"] });
-const fraunces = Fraunces({ variable: "--font-fraunces", subsets: ["latin"] });
+import "@fontsource-variable/manrope/wght.css";
+import "@fontsource-variable/fraunces/wght.css";
+
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "Circa | Map your people", template: "%s | Circa" },
@@ -17,5 +18,5 @@ export const metadata: Metadata = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body className={`${manrope.variable} ${fraunces.variable}`}>{children}</body></html>;
+  return <html lang="en"><body><FirebaseProvider>{children}</FirebaseProvider></body></html>;
 }

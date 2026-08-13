@@ -15,3 +15,34 @@ test("Group resize path uses minimum-only dimensions", async () => {
   assert.match(source, /nextSize\(MIN_GROUP_WIDTH, MIN_GROUP_HEIGHT\)/);
   assert.doesNotMatch(source, /nextSize\(220, 1400, 160, 900\)/);
 });
+
+test("homepage preserves Circa and presents exactly three product experiences", async () => {
+  const source = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+  assert.match(source, />Map your people</);
+  assert.match(source, />Bring in your network</);
+  assert.match(source, />Circa Communities</);
+  assert.match(source, /className="experience-card map"/);
+  assert.match(source, /className="experience-card network"/);
+  assert.match(source, /className="experience-card community"/);
+  assert.doesNotMatch(source, /className="experience-card join"/);
+  assert.match(source, /Already have a Community or Network invite/);
+  assert.doesNotMatch(source, />Connect LinkedIn</);
+});
+
+test("cloud screens preserve return paths and invitation persistence", async () => {
+  const createCommunity = await readFile(new URL("../app/community/new/page.tsx", import.meta.url), "utf8");
+  const createNetwork = await readFile(new URL("../app/network/new/page.tsx", import.meta.url), "utf8");
+  const community = await readFile(new URL("../app/community/[projectId]/CommunityClient.tsx", import.meta.url), "utf8");
+  assert.match(createCommunity, /returnTo=\/community\/new/);
+  assert.match(createNetwork, /returnTo=\/network\/new/);
+  assert.match(community, /watchInvitations/);
+  assert.match(community, /Suggest removal/);
+  assert.match(community, /currentItem/);
+});
+
+test("invitation UI requires explicit consent before anonymous joining", async () => {
+  const source = await readFile(new URL("../app/join/JoinClient.tsx", import.meta.url), "utf8");
+  assert.match(source, /beginAnonymousCommunitySession\(\)/);
+  assert.match(source, /if \(!invite \|\| !consent/);
+  assert.match(source, /disabled=\{!consent/);
+});

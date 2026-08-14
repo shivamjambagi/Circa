@@ -1,60 +1,182 @@
-# Circa
+Circa
 
-Circa is a local-first relationship sketchbook. People are tactile paper cards, relationships are thread-like paths, and personal context can be organised with groups and pinned notes.
+A local-first relationship sketchbook for mapping the people, connections, groups and context that matter to you.
 
-## What works
+Circa turns relationships into a tactile visual workspace. People appear as paper-like cards, connections as hand-drawn threads, and supporting context as sketched groups and pinned notes. Everything is designed to feel calm, direct and personal.
 
-- Calm responsive landing page and full-screen sketch canvas
-- Add, select, edit, drag and safely remove people
-- Create and edit relationship threads, including “introduced by” context
-- Create and edit sketched groups and movable notes
-- Add people by voice in browsers that support the Web Speech API, with a typed-phrase fallback
-- Compose Create, Change and Ask flows with mandatory draft review before apply
-- Deterministic list/CSV import (up to 300 people), duplicate hints and cycle checks
-- Business Connections and Org Chart views powered by the same people
-- Visual graph questions for stored paths, teams, managers and reporting branches
-- Trackpad pan, anchored wheel/pinch zoom, touch pinch, fit-to-content, undo and redo
-- Flush-on-exit autosave, visible save errors, stale-tab write protection and downloadable/restorable workspace backups
-- Validated Workspace v3 migration with a retained v2 recovery copy
-- Inline GitHub and LinkedIn URL validation without scraping
-- Keyboard shortcuts and reduced-motion support
-- Mobile toolbar and detail bottom sheet
+Circa is currently in active development. It runs locally in the browser, requires no account and does not depend on a cloud database.
 
-## Local development
+Highlights
 
-```bash
+Build relationship maps on a responsive, full-screen canvas
+
+Add, select, edit, move and safely remove people
+
+Draw and edit relationship threads, including “introduced by” context
+
+Organise people into sketched groups and attach movable notes
+
+Add people by voice where the Web Speech API is supported, with a typed fallback
+
+Import lists or CSV files containing up to 300 people
+
+Switch Business Projects between Connections and Org Chart views
+
+Ask visual questions about paths, teams, managers and reporting branches
+
+Navigate with trackpad pan, anchored wheel or pinch zoom, touch pinch and fit-to-content
+
+Undo and redo changes across the workspace
+
+Back up and restore projects with downloadable workspace files
+
+Use the interface on desktop and mobile, with reduced-motion support
+
+Core workspace
+
+Element
+
+Purpose
+
+People
+
+Tactile cards representing the people in a project
+
+Threads
+
+Visual relationships between people, with optional context
+
+Groups
+
+Sketched boundaries for teams, circles or other collections
+
+Notes
+
+Movable context pinned directly to the canvas
+
+Projects
+
+Separate spaces for personal or business relationship maps
+
+Compose
+
+Compose is a controlled language layer built on top of the graph. It supports three intents:
+
+Create prepares people, relationships and groups as a temporary draft.
+
+Change prepares a diff against people already in the current project.
+
+Ask runs deterministic queries against stored graph data and highlights the result.
+
+Compose never changes the canvas directly. Every structured intent is validated and previewed before it can be applied. A confirmed batch becomes a single undo transaction.
+
+Paste List, CSV and Ask operations run locally. Free-form descriptions require an optional server-side provider. Provider configuration is documented in COMPOSE_SETUP.md.
+
+Importing people
+
+Circa supports deterministic list and CSV imports for up to 300 people at a time. Common column names are recognised automatically:
+
+Data
+
+Recognised examples
+
+Name
+
+name, full name, employee
+
+Role
+
+role, job title, position
+
+Manager
+
+manager, reports to, line manager
+
+Imported rows are treated strictly as data. Formula-like cells are blocked without rejecting valid values such as +44 phone numbers. Circa also surfaces possible duplicates and prevents reporting cycles.
+
+Business Projects
+
+Business Projects can switch between two views while using the same underlying people:
+
+Connections shows the wider relationship graph.
+
+Org Chart reads the canonical reportsToPersonId relationship.
+
+The Org Chart includes only explicit organisation members, supports multiple companies and root nodes, prevents reporting cycles, and allows branches to be collapsed.
+
+Local development
+
+Install the dependencies and start the development server:
+
 npm install
 npm run dev
-```
 
-Circa V10 is deliberately local-first and requires no account or cloud database. Workspace data is saved under `circa_workspace_v3` in the current browser. Different devices and browsers do not sync automatically. Export a backup from the Project Hub or canvas More menu. The first v2 migration retains the original JSON under `circa_workspace_backup_v2`; a restore keeps the replaced Workspace under `circa_workspace_recovery_v10`.
+No account or cloud database is required.
 
-## Compose
+Storage and recovery
 
-Compose is a controlled language layer above the existing graph. It supports three intents:
+LocalStorage is the official Circa V10 storage adapter. Workspace data belongs to the current browser, so it does not automatically sync between browsers or devices.
 
-- **Create** prepares people, relationships and groups as a temporary draft.
-- **Change** prepares a diff against people already on the current Project.
-- **Ask** runs deterministic queries against stored graph data and highlights the answer.
+Key
 
-No Compose operation can mutate the canvas directly. Structured intent is validated, previewed and only applied after explicit confirmation. A confirmed batch is one undo transaction. Paste List and CSV work locally; free-form descriptions require an optional server-side provider. See `COMPOSE_SETUP.md`.
+Purpose
 
-CSV columns are matched from common names such as `name` / `full name` / `employee`, `role` / `job title` / `position`, and `manager` / `reports to` / `line manager`. Rows are parsed as data only, formula-like cells are blocked without rejecting `+44` phone numbers, and imports are limited to 300 people.
+circa_workspace_v3
 
-Business Projects can switch between **Connections** and **Org Chart**. The Org Chart reads the canonical `reportsToPersonId`, includes only explicit organisation members, prevents reporting cycles, supports multiple roots and companies, and can collapse branches.
+Current workspace data
 
-## Storage architecture
+circa_workspace_backup_v2
 
-`app/graphStore.ts` defines the typed graph, Workspace migration, backup and local concurrency contracts. LocalStorage is the official V10 storage adapter. Project saves do not alter navigation state, and stale same-Project tabs must be reloaded or explicitly confirmed before replacing a newer version.
+Original data retained during the first v2 migration
 
-## Shortcuts
+circa_workspace_recovery_v10
 
-- `Cmd/Ctrl + Z`: undo
-- `Cmd/Ctrl + Shift + Z`: redo
-- `Delete` / `Backspace`: remove the selected item
-- `+` / `-`: zoom
-- `Escape`: cancel the active tool or close a panel
+Workspace replaced by a restore operation
 
-## Privacy
+app/graphStore.ts defines the typed graph, workspace migration, backup and local concurrency contracts. Project saves do not alter navigation state. If another tab has written a newer version of the same project, Circa requires the stale tab to reload or explicitly confirm before replacing it.
 
-The Workspace is stored in the current browser and is not cloud-synchronised. Export regular JSON backups from the Project Hub or canvas More menu. Voice recognition is supplied by the browser and may use the browser vendor's speech service. Free-form Compose sends only a reduced graph context to the configured server-side provider; Paste List, CSV and Ask stay local.
+The workspace flushes pending changes on exit, reports save failures and provides downloadable backups from the Project Hub and the canvas More menu.
+
+Privacy
+
+Workspace data is stored in the current browser and is not cloud-synchronised.
+
+Paste List, CSV and Ask remain local.
+
+Voice recognition is provided by the browser and may use the browser vendor’s speech service.
+
+Free-form Compose sends only a reduced graph context to the configured server-side provider.
+
+GitHub and LinkedIn URLs are validated inline but are not scraped.
+
+Export regular JSON backups if the workspace is important to you, especially before clearing browser data or moving to another device.
+
+Keyboard shortcuts
+
+Shortcut
+
+Action
+
+Cmd/Ctrl + Z
+
+Undo
+
+Cmd/Ctrl + Shift + Z
+
+Redo
+
+Delete or Backspace
+
+Remove the selected item
+
++ or -
+
+Zoom in or out
+
+Escape
+
+Cancel the active tool or close a panel
+
+Current status
+
+Circa is an in-development local-first application. Storage formats, Compose behaviour and interface details may continue to evolve as the project is refined.

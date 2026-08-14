@@ -96,8 +96,8 @@ export const projectTemplates: Record<ProjectCategory, ProjectTemplate> = {
     cardDetail: "family",
   },
   community: {
-    label: "Community",
-    description: "Sports, societies, clubs, teams or communities.",
+    label: "Community map",
+    description: "Privately map people from a club, team, society or local group.",
     icon: "◌",
     accent: "lilac",
     emptyHint: "Add someone from your group.",

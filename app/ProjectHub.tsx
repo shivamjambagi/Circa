@@ -220,7 +220,7 @@ export function CreateProjectView({ onCancel, onCreate }: { onCancel: () => void
     <section className="create-project-card">
       <p className="eyebrow"><span /> New project</p>
       <h1>What are you mapping?</h1>
-      <p className="create-support">Choose a starting point. You can change this later.</p>
+      <p className="create-support">Choose a starting point for a private map stored in this browser. Shared Circa Communities are created or joined separately.</p><a className="create-community-link" href="/start">Need a shared Community? See your Circa options →</a>
       <div className={`category-grid ${category ? "has-selection" : ""}`}>{(Object.keys(projectTemplates) as ProjectCategory[]).map((key) => { const template = projectTemplates[key]; return <button key={key} className={`${category === key ? "selected" : ""} accent-${template.accent}`} onClick={() => setCategory(key)}><i>{template.icon}</i><strong>{template.label}</strong><span>{template.description}</span></button>; })}</div>
       {category && <form className="project-name-step" onSubmit={(event) => { event.preventDefault(); if (canCreate) onCreate(name.trim(), category, custom.trim()); }}>
         {category === "other" && <label>What are you mapping?<input maxLength={80} autoFocus value={custom} onChange={(event) => setCustom(event.target.value)} placeholder="e.g. Martial arts club" required /></label>}

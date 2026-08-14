@@ -3,7 +3,7 @@
 import { User } from "firebase/auth";
 import { DocumentData, DocumentSnapshot, Timestamp, addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { getFirebaseServices } from "../firebase/client";
-import type { CloudProject, CommunityItem, CommunityList, CommunityListType, CommunityMember, EditProposal, PreviewSection, PublicInvite } from "./types";
+import type { CloudProject, CommunityItem, CommunityList, CommunityListType, CommunityMember, CommunityMemberSummary, EditProposal, PreviewSection, PublicInvite } from "./types";
 
 const DEFAULT_SECTIONS: Array<{ title: string; listType: CommunityListType; description: string }> = [
   { title: "Local services", listType: "directory", description: "Trusted contacts and useful local services." },
@@ -31,6 +31,16 @@ function membershipIndex(project: CloudProject | { id: string; name: string; pro
   return { projectId: project.id, projectName: project.name, projectMode: project.projectMode, role, status, updatedAt: serverTimestamp(), schemaVersion: 1 };
 }
 
+function publicMemberDisplayName(value: unknown, role: CommunityMember["role"]) {
+  const displayName = safeText(value, 80);
+  if (displayName && !displayName.includes("@")) return displayName;
+  return role === "owner" ? "Community owner" : role === "admin" ? "Community admin" : "Community member";
+}
+
+function memberDirectoryPayload(member: { uid: string; displayName?: string; role: CommunityMember["role"]; status?: CommunityMember["status"]; joinedAt?: unknown }) {
+  return { uid: member.uid, displayName: publicMemberDisplayName(member.displayName, member.role), role: member.role, status: member.status || "active", joinedAt: member.joinedAt || serverTimestamp(), updatedAt: serverTimestamp(), schemaVersion: 1 };
+}
+
 function previewSections(sections: Array<{ title: string; description?: string; listType?: string }>): PreviewSection[] {
   return sections.slice(0, 8).map((section, index) => ({ id: `${section.listType || "custom"}-${index}`, title: safeText(section.title, 80), description: safeText(section.description, 180), iconKey: section.listType || "custom" }));
 }
@@ -55,6 +65,16 @@ export async function createCommunity(user: User, input: { name: string; locatio
   batch.set(doc(db, "users", user.uid, "memberships", projectRef.id), membershipIndex(project, "owner"));
   sections.forEach((section, order) => batch.set(doc(collection(db, "projects", projectRef.id, "lists")), { ...section, order, schemaVersion: 2, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
   await batch.commit();
+
+  // The safe member directory is a V16 addition. Keep Community creation compatible
+  // with already-deployed V15 rules while the V16 rules are still being tested.
+  // Once the V16 rules are deployed this succeeds; until then the core Community
+  // (project, owner membership, account index and lists) is still created atomically.
+  try {
+    await setDoc(doc(db, "projects", projectRef.id, "memberDirectory", user.uid), memberDirectoryPayload({ uid: user.uid, displayName: user.displayName || user.email || "Community owner", role: "owner" }));
+  } catch {
+    // Non-blocking during the V15 -> V16 rules transition.
+  }
   return projectRef.id;
 }
 
@@ -74,6 +94,21 @@ export function watchMembership(projectId: string, uid: string, callback: (membe
 
 export function watchMembers(projectId: string, callback: (members: CommunityMember[]) => void) {
   return onSnapshot(query(collection(getFirebaseServices().db, "projects", projectId, "members"), orderBy("joinedAt", "asc"), limit(500)), (snap) => callback(snap.docs.map((item) => ({ uid: item.id, ...item.data() } as CommunityMember))));
+}
+
+export function watchCommunityMemberDirectory(projectId: string, callback: (members: CommunityMemberSummary[]) => void) {
+  return onSnapshot(query(collection(getFirebaseServices().db, "projects", projectId, "memberDirectory"), orderBy("joinedAt", "asc"), limit(500)), (snap) => callback(snap.docs.map((item) => ({ uid: item.id, ...item.data() } as CommunityMemberSummary))));
+}
+
+export async function ensureCommunityMemberDirectoryEntry(projectId: string, member: CommunityMember) {
+  await setDoc(doc(getFirebaseServices().db, "projects", projectId, "memberDirectory", member.uid), memberDirectoryPayload(member), { merge: true });
+}
+
+export async function syncCommunityMemberDirectory(projectId: string, members: CommunityMember[]) {
+  if (!members.length) return;
+  const batch = writeBatch(getFirebaseServices().db);
+  members.forEach((member) => batch.set(doc(getFirebaseServices().db, "projects", projectId, "memberDirectory", member.uid), memberDirectoryPayload(member), { merge: true }));
+  await batch.commit();
 }
 
 export function watchCommunityLists(projectId: string, callback: (lists: CommunityList[]) => void) {
@@ -144,7 +179,7 @@ export async function reviewProposal(projectId: string, proposalId: string, revi
       const itemRef = proposal.itemId ? doc(db, "projects", projectId, "lists", proposal.listId, "items", proposal.itemId) : doc(collection(db, "projects", projectId, "lists", proposal.listId, "items"));
       if (proposal.operation === "delete") transaction.delete(itemRef);
       else if (proposal.operation === "update") transaction.set(itemRef, { ...proposal.proposedItem, updatedAt: serverTimestamp() }, { merge: true });
-      else transaction.set(itemRef, { ...proposal.proposedItem, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      else transaction.set(itemRef, { ...proposal.proposedItem, createdBy: proposal.submittedBy, createdByName: proposal.submittedByName, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     }
     transaction.update(proposalRef, { status: decision, reviewedBy: reviewerId, reviewedAt: serverTimestamp(), reviewNote: safeText(reviewNote, 500) });
   });
@@ -181,7 +216,7 @@ export async function getPublicInvite(token: string) { const snapshot = await ge
 export async function resolveJoinCode(code: string) { const snapshot = await getDoc(doc(getFirebaseServices().db, "joinCodes", safeText(code, 20).toUpperCase())); if (!snapshot.exists()) return null; return publicInviteFromSnapshot(snapshot, safeText(snapshot.data().token, 160)); }
 
 export async function joinProjectByInvite(user: User, invite: PublicInvite) {
-  const { db } = getFirebaseServices(); const inviteRef = doc(db, "invites", invite.token); const memberRef = doc(db, "projects", invite.projectId, "members", user.uid); const indexRef = doc(db, "users", user.uid, "memberships", invite.projectId);
+  const { db } = getFirebaseServices(); const inviteRef = doc(db, "invites", invite.token); const memberRef = doc(db, "projects", invite.projectId, "members", user.uid); const directoryRef = doc(db, "projects", invite.projectId, "memberDirectory", user.uid); const indexRef = doc(db, "users", user.uid, "memberships", invite.projectId);
   const result = await runTransaction(db, async (transaction) => {
     const [liveInvite, existing] = await Promise.all([transaction.get(inviteRef), transaction.get(memberRef)]);
     if (!liveInvite.exists() || liveInvite.data().status !== "active" || liveInvite.data().projectId !== invite.projectId) throw new Error("This invitation is no longer active.");
@@ -189,10 +224,13 @@ export async function joinProjectByInvite(user: User, invite: PublicInvite) {
     if (expiry && expiry <= Date.now()) throw new Error("This invitation has expired.");
     if (existing.exists() && existing.data().status === "active") {
       transaction.set(indexRef, membershipIndex({ id: invite.projectId, name: invite.projectName, projectMode: invite.projectMode }, existing.data().role), { merge: true });
+      transaction.set(directoryRef, memberDirectoryPayload({ uid: user.uid, displayName: existing.data().displayName || user.displayName || user.email || "Community member", role: existing.data().role, status: "active", joinedAt: existing.data().joinedAt }), { merge: true });
       return { alreadyMember: true, role: existing.data().role as CommunityMember["role"] };
     }
     const joinedAt = existing.exists() && existing.data().joinedAt ? existing.data().joinedAt : serverTimestamp();
-    transaction.set(memberRef, { uid: user.uid, role: "member", status: "active", displayName: user.displayName || user.email || `${invite.projectMode === "network" ? "Network" : "Community"} member`, isAnonymous: user.isAnonymous, joinedViaInviteId: invite.token, consented: true, consentedAt: serverTimestamp(), consentVersion: 1, joinedAt, updatedAt: serverTimestamp(), schemaVersion: 2 }, { merge: true });
+    const displayName = user.displayName || user.email || `${invite.projectMode === "network" ? "Network" : "Community"} member`;
+    transaction.set(memberRef, { uid: user.uid, role: "member", status: "active", displayName, isAnonymous: user.isAnonymous, joinedViaInviteId: invite.token, consented: true, consentedAt: serverTimestamp(), consentVersion: 1, joinedAt, updatedAt: serverTimestamp(), schemaVersion: 2 }, { merge: true });
+    transaction.set(directoryRef, memberDirectoryPayload({ uid: user.uid, displayName, role: "member", status: "active", joinedAt }), { merge: true });
     transaction.set(indexRef, membershipIndex({ id: invite.projectId, name: invite.projectName, projectMode: invite.projectMode }, "member"), { merge: true });
     return { alreadyMember: false, role: "member" as const };
   });
@@ -205,6 +243,7 @@ export const joinCommunity = joinProjectByInvite;
 export async function updateMemberRole(project: CloudProject, memberId: string, role: "admin" | "member") {
   const { db } = getFirebaseServices(); const batch = writeBatch(db);
   batch.update(doc(db, "projects", project.id, "members", memberId), { role, updatedAt: serverTimestamp() });
+  batch.set(doc(db, "projects", project.id, "memberDirectory", memberId), { role, status: "active", updatedAt: serverTimestamp() }, { merge: true });
   batch.set(doc(db, "users", memberId, "memberships", project.id), membershipIndex(project, role), { merge: true });
   await batch.commit();
 }
@@ -212,6 +251,7 @@ export async function updateMemberRole(project: CloudProject, memberId: string, 
 export async function removeMember(project: CloudProject, memberId: string) {
   const { db } = getFirebaseServices(); const batch = writeBatch(db);
   batch.update(doc(db, "projects", project.id, "members", memberId), { status: "removed", updatedAt: serverTimestamp() });
+  batch.set(doc(db, "projects", project.id, "memberDirectory", memberId), { status: "removed", updatedAt: serverTimestamp() }, { merge: true });
   batch.set(doc(db, "users", memberId, "memberships", project.id), membershipIndex(project, "member", "removed"), { merge: true });
   await batch.commit();
 }
@@ -231,7 +271,15 @@ export function watchReminders(projectId: string, callback: (items: Array<{ id: 
   return onSnapshot(query(collection(getFirebaseServices().db, "projects", projectId, "reminders"), orderBy("nextRunAt", "asc"), limit(100)), (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() }))));
 }
 
+export async function deleteReminder(projectId: string, reminderId: string) {
+  await deleteDoc(doc(getFirebaseServices().db, "projects", projectId, "reminders", reminderId));
+}
+
 export async function listMemberProjects(uid: string) {
   const memberships = await getDocs(query(collection(getFirebaseServices().db, "users", uid, "memberships"), where("status", "==", "active"), limit(100)));
   return memberships.docs.map((item) => ({ id: item.id, ...item.data() } as { id: string; projectId: string; projectName: string; projectMode: string; role: string; status: string }));
+}
+
+export function watchMemberProjects(uid: string, callback: (items: Array<{ id: string; projectId: string; projectName: string; projectMode: string; role: string; status: string }>) => void, onError?: (error: unknown) => void) {
+  return onSnapshot(query(collection(getFirebaseServices().db, "users", uid, "memberships"), where("status", "==", "active"), limit(100)), (snapshot) => callback(snapshot.docs.map((item) => ({ id: item.id, ...item.data() } as { id: string; projectId: string; projectName: string; projectMode: string; role: string; status: string }))), onError);
 }

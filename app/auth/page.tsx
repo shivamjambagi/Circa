@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CloudMigrationCard } from "../firebase/CloudMigrationCard";
 import { emailSignIn, emailSignUp, friendlyAuthError, googleSignIn, resetPassword, signOutOfCirca, upgradeAnonymousWithEmail, upgradeAnonymousWithGoogle } from "../firebase/auth";
@@ -20,10 +20,14 @@ export default function AuthPage() {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [workspace, setWorkspace] = useState<Workspace>(() => createEmptyWorkspace());
-  const returnTo = useMemo(() => typeof window === "undefined" ? "/account" : safeReturnTo(new URLSearchParams(window.location.search).get("returnTo")), []);
-  const context = returnTo.startsWith("/community/new") ? "Create an account to create and manage a shared Community." : returnTo.startsWith("/network") ? "Create an account to import and protect your professional network." : "Keep your Communities, Networks and optional cloud features with you.";
+  const [returnTo, setReturnTo] = useState("/account");
+  const context = returnTo.startsWith("/start") || returnTo.includes("workspace=1") ? "Sign in once, then choose whether you want a private Personal Map or a shared Community." : returnTo.startsWith("/community/new") ? "Create an account to create and manage a shared Community." : returnTo.startsWith("/network") ? "Create an account to import and protect your professional network." : "Keep your Communities, Networks and optional cloud features with you.";
 
-  useEffect(() => { void createWorkspaceStore().loadWorkspace().then(setWorkspace).catch(() => undefined); }, []);
+  useEffect(() => {
+    const timer = window.setTimeout(() => setReturnTo(safeReturnTo(new URLSearchParams(window.location.search).get("returnTo"))), 0);
+    void createWorkspaceStore().loadWorkspace().then(setWorkspace).catch(() => undefined);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   async function submit(event: FormEvent) {
     event.preventDefault(); setBusy(true); setMessage("");

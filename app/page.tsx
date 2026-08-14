@@ -40,8 +40,9 @@ function PersonCard({ person, you = false }: { person: PreviewPerson; you?: bool
   );
 }
 
-function Landing({ onStart }: { onStart: () => void }) {
+function Landing() {
   const { user } = useFirebaseUser();
+  const startHref = user && !user.isAnonymous ? "/start" : "/auth?returnTo=/start";
   const [menuOpen, setMenuOpen] = useState(false);
   const lastCommunity = useSyncExternalStore(() => () => undefined, () => { try { return window.localStorage.getItem("circa_last_community") || ""; } catch { return ""; } }, () => "");
   return (
@@ -56,7 +57,7 @@ function Landing({ onStart }: { onStart: () => void }) {
           <a href="#communities">Communities</a>
           <a href="#network">Network</a>
           <a href={user && !user.isAnonymous ? "/account" : "/auth"}>{user && !user.isAnonymous ? "Account" : "Sign in"}</a>
-          <button className="button button-small button-outline" onClick={onStart}>Open Circa</button>
+          <a className="button button-small button-outline" href={startHref}>Open Circa</a>
         </nav>
       </header>
 
@@ -66,10 +67,10 @@ function Landing({ onStart }: { onStart: () => void }) {
           <h1>Map your<br /><em>people.</em></h1>
           <p className="hero-sub">Sketch every part of your life.<br />See how your worlds connect.</p>
           <div className="hero-actions">
-            <button className="button button-dark" onClick={onStart}>Open Circa <span>↗</span></button>
+            <a className="button button-dark" href={startHref}>Open Circa <span>↗</span></a>
             <a className="button button-paper" href="#how">See how it works <span>↓</span></a>
           </div>
-          <p className="privacy-note">✦ Personal maps stay local by default.<small>Accounts are only needed for shared Communities, Networks and optional cloud features. Export a backup anytime.</small></p>
+          <p className="privacy-note">✦ Personal maps stay local by default.<small>Sign in to enter Circa; your private maps still stay in this browser unless you explicitly choose a cloud feature. Export a backup anytime.</small></p>
         </div>
 
         <div className="network-preview" aria-label="Example relationship sketch">
@@ -102,16 +103,16 @@ function Landing({ onStart }: { onStart: () => void }) {
       {lastCommunity && user?.isAnonymous && <aside className="return-community"><span>Temporary Community session</span><a href={`/community/${lastCommunity}`}>Return to your Community →</a></aside>}
 
       <section className="circa-paths" aria-labelledby="circa-paths-title">
-        <header><p className="eyebrow"><span /> One Circa</p><h2 id="circa-paths-title">Three ways to understand<br /><em>your people.</em></h2></header>
+        <header><p className="eyebrow"><span /> One Circa</p><h2 id="circa-paths-title">Three ways to understand<br /><em>your people.</em></h2><p className="circa-paths-support">Map privately, explore professional paths, or share useful Community knowledge.</p></header>
         <div className="experience-grid">
-          <article className="experience-card map"><div className="mini-map" aria-hidden="true"><i className="mini-you">You</i><i>Maya</i><i>Sam</i><i>Daniel</i><span /><span /><span /></div><div><small>01 · Personal</small><h3>Map your people</h3><p>Sketch the people and relationships across your personal life, family, school and work.</p><button onClick={onStart}>Open Circa →</button></div></article>
+          <article className="experience-card map"><div className="mini-map" aria-hidden="true"><i className="mini-you">You</i><i>Maya</i><i>Sam</i><i>Daniel</i><span /><span /><span /></div><div><small>01 · Personal</small><h3>Map your people</h3><p>Sketch the people and relationships across your personal life, family, school and work.</p><a href={startHref}>Open Circa →</a></div></article>
           <article className="experience-card network" id="network"><div className="mini-path" aria-hidden="true"><i>You</i><span>→</span><i>Maya</i><span>→</span><i>James</i><span>→</span><i>Priya</i></div><div><small>02 · Professional</small><h3>Bring in your network</h3><p>Import your LinkedIn connections and discover known pathways through the professional network available to you.</p><a href="/network/new">Explore Networks →</a></div></article>
           <article className="experience-card community" id="communities"><div className="mini-community" aria-hidden="true"><small>Tomorrow</small><strong>Recycling</strong><span>Local services <b>18</b></span><span>Residents meeting <b>Thu</b></span><em>WhatsApp reminders · Connected</em></div><div><small>03 · Shared</small><h3>Circa Communities</h3><p>Keep useful local information, recommendations, reminders and community knowledge in one place.</p><a href="/community/new">Create a Community →</a></div></article>
         </div><aside className="join-utility"><span>Already have a Community or Network invite?</span><a href="/join">Enter a code →</a></aside>
       </section>
 
       <section className="compose-demo" aria-label="Compose feature preview">
-        <div className="compose-demo-copy"><p className="eyebrow"><span /> Sketch with words</p><h2>Describe the people.<br /><em>Review the draft.</em></h2><p>Describe people naturally, or paste a list or CSV. Circa turns your words into temporary paper cards so you can check every person and connection before anything reaches your map.</p><button className="button button-paper" onClick={onStart}>Try Compose <span>↗</span></button></div>
+        <div className="compose-demo-copy"><p className="eyebrow"><span /> Sketch with words</p><h2>Describe the people.<br /><em>Review the draft.</em></h2><p>Describe people naturally, or paste a list or CSV. Circa turns your words into temporary paper cards so you can check every person and connection before anything reaches your map.</p><a className="button button-paper" href={startHref}>Try Compose <span>↗</span></a></div>
         <div className="compose-demo-flow" aria-hidden="true"><div className="demo-prompt"><span>✦ Compose</span><p>“Maya leads design. Daniel leads engineering. Both report to Sarah.”</p><small>Create draft →</small></div><i>→</i><div className="demo-draft"><span className="demo-card sarah"><b>S</b>Sarah<small>CEO · Draft</small></span><span className="demo-card maya"><b>M</b>Maya<small>Design · Draft</small></span><span className="demo-card daniel"><b>D</b>Daniel<small>Engineering · Draft</small></span><svg viewBox="0 0 320 210"><path d="M160 70 C160 105 82 105 82 137"/><path d="M160 70 C160 105 238 105 238 137"/></svg></div></div>
       </section>
 
@@ -147,12 +148,13 @@ function Landing({ onStart }: { onStart: () => void }) {
         </aside>
       </section>
 
-      <footer><a className="brand" href="#top"><Mark /><span className="brand-name">Circa<sup>beta</sup></span></a><p>Map your people.</p><button onClick={onStart}>Open your sketch ↗</button></footer>
+      <footer><a className="brand" href="#top"><Mark /><span className="brand-name">Circa<sup>beta</sup></span></a><p>Map your people.</p><a href={startHref}>Open Circa ↗</a></footer>
     </main>
   );
 }
 
 export default function Home() {
+  const { user, loading: authLoading } = useFirebaseUser();
   const store = useMemo(() => createWorkspaceStore(), []);
   const [workspace, setWorkspace] = useState<Workspace>(() => createEmptyWorkspace());
   const [loaded, setLoaded] = useState(false);
@@ -172,6 +174,39 @@ export default function Home() {
     }).catch((error) => { if (!active) return; setLoaded(true); setSaveError(error instanceof Error ? error.message : "Circa could not load local data."); });
     return () => { active = false; };
   }, [store]);
+
+  useEffect(() => {
+    if (!loaded || authLoading || typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("workspace") !== "1") return;
+    const returnTo = `${window.location.pathname}${window.location.search}`;
+    if (!user || user.isAnonymous) {
+      window.location.replace(`/auth?returnTo=${encodeURIComponent(returnTo)}`);
+      return;
+    }
+    const requestedProject = params.get("project") || "";
+    const timer = window.setTimeout(() => {
+      if (requestedProject && workspace.projects.some((project) => project.id === requestedProject && !project.archived)) {
+        setActiveProjectId(requestedProject);
+        setScreen("canvas");
+        return;
+      }
+      if (params.get("create") === "1") { setScreen("create"); return; }
+      setHubView(params.get("view") === "people" ? "people" : "projects");
+      setScreen(workspace.projects.length ? "hub" : "create");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [authLoading, loaded, user, workspace.projects]);
+
+  function setWorkspaceLocation(next: "hub" | "create" | "canvas" | "landing", projectId = "", view: "projects" | "people" = hubView) {
+    if (typeof window === "undefined") return;
+    if (next === "landing") { window.history.replaceState(null, "", "/"); return; }
+    const params = new URLSearchParams({ workspace: "1" });
+    if (next === "create") params.set("create", "1");
+    if (next === "canvas" && projectId) params.set("project", projectId);
+    if (next === "hub" && view === "people") params.set("view", "people");
+    window.history.replaceState(null, "", `/?${params.toString()}`);
+  }
 
   async function persist(next: Workspace) {
     setWorkspace(next);
@@ -194,10 +229,6 @@ export default function Home() {
     return () => { channel?.close(); window.removeEventListener("storage", storage); };
   }, [screen, store, workspace.revision]);
 
-  function enterCirca() {
-    if (!loaded) return;
-    setScreen(workspace.projects.length ? "hub" : "create");
-  }
 
   async function openProject(id: string) {
     const latest = await store.loadWorkspace();
@@ -205,12 +236,14 @@ export default function Home() {
     const saved = await store.saveWorkspace(next);
     setWorkspace(saved);
     setActiveProjectId(id);
+    setWorkspaceLocation("canvas", id);
     setScreen("canvas");
   }
 
   async function leaveCanvas(destination: "hub" | "landing" = "hub") {
     const latest = await store.loadWorkspace();
     setWorkspace(latest);
+    setWorkspaceLocation(destination);
     setScreen(destination);
   }
 
@@ -221,6 +254,7 @@ export default function Home() {
     const saved = await store.saveWorkspace(next);
     setWorkspace(saved);
     setActiveProjectId(project.id);
+    setWorkspaceLocation("canvas", project.id);
     setScreen("canvas");
   }
 
@@ -233,16 +267,16 @@ export default function Home() {
 
   async function restoreWorkspace(next: Workspace) {
     const saved = await store.restoreWorkspace(next);
-    setWorkspace(saved); setActiveProjectId(saved.activeProjectId); setHubView("projects"); setScreen("hub"); setSaveError("");
+    setWorkspace(saved); setActiveProjectId(saved.activeProjectId); setHubView("projects"); setWorkspaceLocation("hub"); setScreen("hub"); setSaveError("");
   }
 
   const activeProject = workspace.projects.find((project) => project.id === activeProjectId);
 
   let content;
-  if (screen === "landing") content = <Landing onStart={enterCirca} />;
-  else if (screen === "create") content = <CreateProjectView onCancel={() => setScreen(workspace.projects.length ? "hub" : "landing")} onCreate={addProject} />;
-  else if (screen === "hub") content = <ProjectHub workspace={workspace} view={hubView} onView={setHubView} onChange={persist} onNewProject={() => setScreen("create")} onOpenProject={openProject} onHome={() => setScreen("landing")} onRestoreWorkspace={restoreWorkspace} />;
-  else if (!activeProject) content = <ProjectHub workspace={workspace} view="projects" onView={setHubView} onChange={persist} onNewProject={() => setScreen("create")} onOpenProject={openProject} onHome={() => setScreen("landing")} onRestoreWorkspace={restoreWorkspace} />;
-  else content = <SketchCanvas key={activeProject.id} project={activeProject} projects={workspace.projects.filter((project) => !project.archived)} onOpenProject={openProject} onNewProject={() => setScreen("create")} onUpdateProject={updateActiveProject} onExit={() => leaveCanvas("hub")} />;
+  if (screen === "landing") content = <Landing />;
+  else if (screen === "create") content = <CreateProjectView onCancel={() => { const next = workspace.projects.length ? "hub" : "landing"; setWorkspaceLocation(next); setScreen(next); }} onCreate={addProject} />;
+  else if (screen === "hub") content = <ProjectHub workspace={workspace} view={hubView} onView={(next) => { setHubView(next); setWorkspaceLocation("hub", "", next); }} onChange={persist} onNewProject={() => { setWorkspaceLocation("create"); setScreen("create"); }} onOpenProject={openProject} onHome={() => { setWorkspaceLocation("landing"); setScreen("landing"); }} onRestoreWorkspace={restoreWorkspace} />;
+  else if (!activeProject) content = <ProjectHub workspace={workspace} view="projects" onView={(next) => { setHubView(next); setWorkspaceLocation("hub", "", next); setScreen("hub"); }} onChange={persist} onNewProject={() => { setWorkspaceLocation("create"); setScreen("create"); }} onOpenProject={openProject} onHome={() => { setWorkspaceLocation("landing"); setScreen("landing"); }} onRestoreWorkspace={restoreWorkspace} />;
+  else content = <SketchCanvas key={activeProject.id} project={activeProject} projects={workspace.projects.filter((project) => !project.archived)} onOpenProject={openProject} onNewProject={() => { setWorkspaceLocation("create"); setScreen("create"); }} onUpdateProject={updateActiveProject} onExit={() => leaveCanvas("hub")} />;
   return <>{content}{saveError && <div className="persistent-alert error" role="alert"><span>{saveError}</span><button onClick={() => setSaveError("")} aria-label="Dismiss save error">×</button></div>}{storageNotice && <div className="persistent-alert" role="status"><span>{storageNotice}</span><button onClick={() => setStorageNotice("")} aria-label="Dismiss storage notice">×</button></div>}</>;
 }

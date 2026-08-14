@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { after, before, beforeEach, describe, it } from "node:test";
 import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestEnvironment } from "@firebase/rules-unit-testing";
-import { doc, getDoc, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
 
 let environment: RulesTestEnvironment;
 const ownerId = "owner_user"; const memberId = "member_user"; const otherId = "other_user"; const projectId = "community_project";
@@ -18,8 +18,12 @@ beforeEach(async () => {
     await setDoc(doc(db, "projects", projectId), { name: "Prestwich", description: "Approved local information", location: "Manchester", projectMode: "community", category: "community", ownerId, schemaVersion: 1 });
     await setDoc(doc(db, "projects", projectId, "members", ownerId), { uid: ownerId, role: "owner", status: "active", joinedViaInviteId: "", consented: true, consentVersion: 1, joinedAt: new Date(), schemaVersion: 2 });
     await setDoc(doc(db, "projects", projectId, "members", memberId), { uid: memberId, role: "member", status: "active", joinedViaInviteId: "invite_123456789012345678901234", consented: true, consentVersion: 1, joinedAt: new Date(), schemaVersion: 2 });
+    await setDoc(doc(db, "projects", projectId, "memberDirectory", ownerId), { uid: ownerId, displayName: "Owner", role: "owner", status: "active", joinedAt: new Date(), schemaVersion: 1 });
+    await setDoc(doc(db, "projects", projectId, "memberDirectory", memberId), { uid: memberId, displayName: "Member", role: "member", status: "active", joinedAt: new Date(), schemaVersion: 1 });
     await setDoc(doc(db, "projects", projectId, "lists", "notices"), { title: "Notices", order: 1, schemaVersion: 1 });
     await setDoc(doc(db, "projects", projectId, "lists", "notices", "items", "approved"), { title: "Approved", details: "Published", order: 1, schemaVersion: 1 });
+    await setDoc(doc(db, "projects", projectId, "lists", "notices", "items", "member-owned"), { title: "Member contribution", createdBy: memberId, order: 2, schemaVersion: 2 });
+    await setDoc(doc(db, "projects", projectId, "lists", "notices", "items", "other-owned"), { title: "Someone else contribution", createdBy: otherId, order: 3, schemaVersion: 2 });
     await setDoc(doc(db, "projects", "unrelated"), { name: "Private", projectMode: "community", ownerId: otherId, schemaVersion: 1 });
     await setDoc(doc(db, "projects", "network"), { name: "Network", projectMode: "network", ownerId, schemaVersion: 1 });
     await setDoc(doc(db, "projects", "network", "members", ownerId), { uid: ownerId, role: "owner", status: "active", joinedViaInviteId: "", consented: true, consentVersion: 1, joinedAt: new Date(), schemaVersion: 2 });
@@ -38,11 +42,24 @@ describe("Community database permissions", () => {
     await assertFails(setDoc(doc(db, "projects", projectId, "editProposals", "forged"), { projectId, listId: "notices", itemId: "", operation: "create", proposedItem: {}, status: "approved", submittedBy: memberId }));
   });
 
+  it("lets Community members list safe member summaries but not raw membership records", async () => {
+    const db = auth(memberId);
+    await assertSucceeds(getDocs(collection(db, "projects", projectId, "memberDirectory")));
+    await assertFails(getDocs(collection(db, "projects", projectId, "members")));
+  });
+
   it("blocks member publication, review, self-promotion and unrelated Community reads", async () => {
     const db = auth(memberId);
     await assertFails(setDoc(doc(db, "projects", projectId, "lists", "notices", "items", "direct"), { title: "Bypass", order: 2, schemaVersion: 1 }));
     await assertFails(updateDoc(doc(db, "projects", projectId, "members", memberId), { role: "admin" }));
     await assertFails(getDoc(doc(db, "projects", "unrelated")));
+  });
+
+  it("lets members delete only published information they originally added", async () => {
+    const db = auth(memberId);
+    await assertSucceeds(deleteDoc(doc(db, "projects", projectId, "lists", "notices", "items", "member-owned")));
+    await assertFails(deleteDoc(doc(db, "projects", projectId, "lists", "notices", "items", "other-owned")));
+    await assertFails(deleteDoc(doc(db, "projects", projectId, "lists", "notices", "items", "approved")));
   });
 
   it("lets the owner publish while server-only integration records stay denied", async () => {

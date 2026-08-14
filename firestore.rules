@@ -61,10 +61,27 @@ service cloud.firestore {
         allow delete: if false;
       }
 
+      // Safe member directory: contains only display name, role/status and join date.
+      // Community members may list this collection without exposing private membership metadata.
+      match /memberDirectory/{memberId} {
+        allow read: if activeMember(projectId);
+        allow create, update: if activeMemberAfter(projectId) && existsAfter(memberPath(projectId, memberId)) &&
+          request.resource.data.uid == memberId &&
+          request.resource.data.role == memberAfter(projectId, memberId).role &&
+          request.resource.data.status == memberAfter(projectId, memberId).status &&
+          request.resource.data.keys().hasOnly(['uid', 'displayName', 'role', 'status', 'joinedAt', 'updatedAt', 'schemaVersion']) &&
+          (request.auth.uid == memberId || adminAfter(projectId));
+        allow delete: if false;
+      }
+
       match /lists/{listId} {
         allow read: if activeMember(projectId);
         allow create, update, delete: if adminAfter(projectId);
-        match /items/{itemId} { allow read: if activeMember(projectId); allow create, update, delete: if adminAfter(projectId); }
+        match /items/{itemId} {
+          allow read: if activeMember(projectId);
+          allow create, update: if adminAfter(projectId);
+          allow delete: if adminAfter(projectId) || (activeMember(projectId) && resource.data.createdBy == request.auth.uid);
+        }
       }
 
       match /editProposals/{proposalId} {

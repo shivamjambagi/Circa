@@ -36,13 +36,15 @@ test("cloud screens preserve return paths and invitation persistence", async () 
   assert.match(createCommunity, /returnTo=\/community\/new/);
   assert.match(createNetwork, /returnTo=\/network\/new/);
   assert.match(community, /watchInvitations/);
-  assert.match(community, /Suggest removal/);
+  assert.match(community, /Contacts/);
+  assert.match(community, /Manage/);
   assert.match(community, /currentItem/);
 });
 
-test("invitation UI requires explicit consent before anonymous joining", async () => {
+test("invitation UI requires explicit consent and a persistent account", async () => {
   const source = await readFile(new URL("../app/join/JoinClient.tsx", import.meta.url), "utf8");
-  assert.match(source, /beginAnonymousCommunitySession\(\)/);
+  assert.doesNotMatch(source, /beginAnonymousCommunitySession/);
+  assert.match(source, /!user \|\| user\.isAnonymous/);
   assert.match(source, /if \(!invite \|\| !consent/);
   assert.match(source, /disabled=\{!consent/);
 });

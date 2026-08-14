@@ -35,6 +35,15 @@ export type CommunityMember = {
   contributionEnabled?: boolean;
 };
 
+
+export type CommunityMemberSummary = {
+  uid: string;
+  role: MemberRole;
+  status: "active" | "removed";
+  displayName: string;
+  joinedAt?: unknown;
+};
+
 export type CommunityList = {
   id: string;
   title: string;
@@ -78,6 +87,8 @@ export type CommunityItem = {
   enabled?: boolean;
   customFields?: Record<string, string>;
   order: number;
+  createdBy?: string;
+  createdByName?: string;
   schemaVersion: number;
 };
 

@@ -102,7 +102,7 @@ function Landing({ onStart }: { onStart: () => void }) {
       {lastCommunity && user?.isAnonymous && <aside className="return-community"><span>Temporary Community session</span><a href={`/community/${lastCommunity}`}>Return to your Community →</a></aside>}
 
       <section className="circa-paths" aria-labelledby="circa-paths-title">
-        <header><p className="eyebrow"><span /> One Circa</p><h2 id="circa-paths-title">However you know people,<br /><em>there&apos;s a place to understand it.</em></h2></header>
+        <header><p className="eyebrow"><span /> One Circa</p><h2 id="circa-paths-title">Three ways to understand<br /><em>your people.</em></h2></header>
         <div className="experience-grid">
           <article className="experience-card map"><div className="mini-map" aria-hidden="true"><i className="mini-you">You</i><i>Maya</i><i>Sam</i><i>Daniel</i><span /><span /><span /></div><div><small>01 · Personal</small><h3>Map your people</h3><p>Sketch the people and relationships across your personal life, family, school and work.</p><button onClick={onStart}>Open Circa →</button></div></article>
           <article className="experience-card network" id="network"><div className="mini-path" aria-hidden="true"><i>You</i><span>→</span><i>Maya</i><span>→</span><i>James</i><span>→</span><i>Priya</i></div><div><small>02 · Professional</small><h3>Bring in your network</h3><p>Import your LinkedIn connections and discover known pathways through the professional network available to you.</p><a href="/network/new">Explore Networks →</a></div></article>

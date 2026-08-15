@@ -15,7 +15,10 @@ export const metadata: Metadata = {
   robots: { index: true, follow: true },
   other: { "codex-preview": "development" },
   manifest: "/manifest.webmanifest",
-  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  icons: {
+  icon: "/favicon-v2.svg",
+  shortcut: "/favicon-v2.svg",
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

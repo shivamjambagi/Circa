@@ -14,6 +14,7 @@ export const metadata: Metadata = {
   openGraph: { title: "Circa | Map your people", description: "Sketch how your world connects, with context instead of scores.", type: "website", siteName: "Circa" },
   robots: { index: true, follow: true },
   other: { "codex-preview": "development" },
+  manifest: "/manifest.webmanifest",
   icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
 };
 

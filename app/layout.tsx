@@ -5,6 +5,8 @@ import "@fontsource-variable/manrope/wght.css";
 import "@fontsource-variable/fraunces/wght.css";
 
 import "./globals.css";
+import "./contact-directory-display.css";
+import "./directory-import.css";
 
 export const metadata: Metadata = {
   title: { default: "Circa | Map your people", template: "%s | Circa" },

@@ -147,6 +147,31 @@ export async function addPublishedItem(projectId: string, listId: string, item: 
   return ref.id;
 }
 
+export async function importPublishedDirectoryItems(projectId: string, listId: string, items: Array<Partial<CommunityItem>>) {
+  if (!items.length) return { count: 0 };
+  if (items.length > 400) throw new Error("Circa imports up to 400 directory contacts at a time.");
+
+  const { db } = getFirebaseServices();
+  const batch = writeBatch(db);
+
+  items.forEach((item, index) => {
+    const providerId = safeText(item.customFields?.providerId, 80);
+    const fallback = safeText(item.title, 80) || `contact-${index + 1}`;
+    const key = (providerId || fallback).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 90) || `contact-${index + 1}`;
+    const ref = doc(db, "projects", projectId, "lists", listId, "items", `directory-${key}`);
+
+    batch.set(ref, {
+      ...itemPayload(item),
+      importSource: "private-directory-seed",
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+  });
+
+  await batch.commit();
+  return { count: items.length };
+}
+
 export async function updatePublishedItem(projectId: string, listId: string, itemId: string, item: Partial<CommunityItem>) {
   await updateDoc(doc(getFirebaseServices().db, "projects", projectId, "lists", listId, "items", itemId), { ...itemPayload(item), updatedAt: serverTimestamp() });
 }

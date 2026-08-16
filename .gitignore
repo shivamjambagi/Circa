@@ -47,3 +47,6 @@ tsconfig.tsbuildinfo
 .netlify
 /node_modules/
 /.vinext/
+
+# Private local Community seed data - never commit real contact details
+/seed-data/

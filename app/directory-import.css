@@ -1,0 +1,171 @@
+.directory-import-card {
+  margin-top: 18px;
+  padding: clamp(20px, 3vw, 30px);
+  border: 1px solid rgba(34,34,31,.22);
+  border-radius: 12px 15px 11px 14px;
+  background: rgba(255,254,250,.84);
+  box-shadow: 4px 6px 0 rgba(34,34,31,.055);
+}
+
+.directory-import-card > header {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.directory-import-card h3 {
+  margin: 8px 0 6px;
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-size: clamp(25px, 3vw, 34px);
+  font-weight: 540;
+  letter-spacing: -.035em;
+}
+
+.directory-import-card header p:not(.eyebrow) {
+  max-width: 670px;
+  margin: 0;
+  color: #716d65;
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.directory-import-target {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border: 1px solid rgba(34,34,31,.18);
+  border-radius: 999px;
+  background: #f5f1e7;
+  color: #625f58;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.directory-import-drop {
+  position: relative;
+  min-height: 92px;
+  display: grid;
+  place-items: center;
+  border: 1px dashed rgba(34,34,31,.3);
+  border-radius: 10px;
+  background: #f8f6ef;
+  text-align: center;
+  overflow: hidden;
+}
+
+.directory-import-drop input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.directory-import-drop div {
+  display: grid;
+  gap: 5px;
+  pointer-events: none;
+}
+
+.directory-import-drop strong {
+  font-size: 12px;
+}
+
+.directory-import-drop small {
+  color: #88837a;
+  font-size: 9px;
+}
+
+.directory-import-preview {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 120px 1fr auto;
+  gap: 16px;
+  align-items: center;
+}
+
+.directory-import-count {
+  display: grid;
+  gap: 2px;
+  padding: 12px;
+  border-left: 3px solid #89a37d;
+  background: #f0f4eb;
+}
+
+.directory-import-count strong {
+  font-family: var(--font-fraunces), Georgia, serif;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.directory-import-count span {
+  color: #687060;
+  font-size: 9px;
+}
+
+.directory-import-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.directory-import-categories > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 8px;
+  border-radius: 999px;
+  background: #f3f0e8;
+  color: #67635c;
+  font-size: 8.5px;
+}
+
+.directory-import-categories strong {
+  color: #282823;
+  font-size: 8px;
+}
+
+.directory-import-preview > p {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: #807b72;
+  font-size: 9px;
+  line-height: 1.55;
+}
+
+.directory-import-success,
+.directory-import-error {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  font-size: 10px;
+}
+
+.directory-import-success {
+  border-left: 3px solid #7f9a72;
+  background: #eef5e9;
+  color: #53634d;
+}
+
+.directory-import-error {
+  border-left: 3px solid #b56f63;
+  background: #fff0ed;
+  color: #8d4b42;
+}
+
+@media (max-width: 760px) {
+  .directory-import-card > header,
+  .directory-import-preview {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .directory-import-target {
+    justify-self: start;
+  }
+
+  .directory-import-preview .button {
+    width: 100%;
+  }
+}

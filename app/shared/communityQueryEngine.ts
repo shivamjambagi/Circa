@@ -63,7 +63,18 @@ function render(record: PublishedCommunityRecord) {
 function queryBins(question: string, records: PublishedCommunityRecord[], timezone: string, now: Date): CommunityQueryResult {
   const today = dateKeyInTimezone(now, timezone); const targetDate = targetDateFromQuestion(question, today);
   const binWords = terms(question).filter((word) => ["recycling", "recycle", "general", "waste", "garden", "food", "brown", "green", "black", "blue"].includes(word));
-  const candidates = records.filter((record) => record.enabled !== false && (record.itemType === "bin" || record.schedule || /bin|waste|recycl|rubbish/i.test(`${record.listTitle} ${record.category || ""}`))).filter((record) => !binWords.length || score(record, binWords) > 0);
+  // Prefer explicit bin/schedule records, but keep backward compatibility for
+  // older approved bin records that pre-date itemType/schedule metadata.
+  // Directory/contact records are never allowed through this legacy fallback,
+  // so services such as "Bin cleaning" cannot become collection answers.
+  const candidates = records
+    .filter((record) => {
+      if (record.enabled === false) return false;
+      if (record.itemType === "bin" || Boolean(record.schedule)) return true;
+      if (record.itemType) return false;
+      return /bin|waste|recycl|rubbish/i.test(`${record.listTitle} ${record.title} ${record.category || ""}`);
+    })
+    .filter((record) => !binWords.length || score(record, binWords) > 0);
   const scheduled = candidates.flatMap((record) => { if (!record.schedule) return []; const occurrence = nextScheduleOccurrence(record.schedule, today, targetDate); return occurrence ? [{ record, occurrence }] : []; }).filter((entry) => !targetDate || entry.occurrence === targetDate).sort((a, b) => a.occurrence.localeCompare(b.occurrence) || a.record.title.localeCompare(b.record.title));
   if (scheduled.length) {
     const earliest = scheduled[0].occurrence; const names = scheduled.filter((entry) => entry.occurrence === earliest).map((entry) => entry.record.title);

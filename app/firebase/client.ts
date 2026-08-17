@@ -6,17 +6,47 @@ import { getAnalytics, isSupported as analyticsIsSupported } from "firebase/anal
 import { Auth, browserLocalPersistence, getAuth, setPersistence } from "firebase/auth";
 import { Firestore, getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 
+function requireFirebaseEnv(name: string, value: string | undefined) {
+  if (!value?.trim()) {
+    throw new Error(`Missing required Firebase environment variable: ${name}`);
+  }
+
+  return value.trim();
+}
+
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyDsSYguV1Y1If_SqrKvYr05cH9PN0b-KDA",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "circa-4bea4.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "circa-4bea4",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "circa-4bea4.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "551343145367",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:551343145367:web:37cebecc12eac6713944d2",
-  measurementId: process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID || "G-GLBV318TDK",
+  apiKey: requireFirebaseEnv(
+    "NEXT_PUBLIC_FIREBASE_API_KEY",
+    process.env.NEXT_PUBLIC_FIREBASE_API_KEY
+  ),
+  authDomain: requireFirebaseEnv(
+    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+    process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+  ),
+  projectId: requireFirebaseEnv(
+    "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+    process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID
+  ),
+  storageBucket: requireFirebaseEnv(
+    "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+    process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+  ),
+  messagingSenderId: requireFirebaseEnv(
+    "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+    process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+  ),
+  appId: requireFirebaseEnv(
+    "NEXT_PUBLIC_FIREBASE_APP_ID",
+    process.env.NEXT_PUBLIC_FIREBASE_APP_ID
+  ),
+  measurementId:
+    process.env.NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID?.trim() || undefined,
 };
 
-const appCheckSiteKey = process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY || "6Leb-lEtAAAAAJVLLrjf2-P9_VsmU-94LMH5MhA3";
+const appCheckSiteKey = requireFirebaseEnv(
+  "NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY",
+  process.env.NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY
+);
 
 export type FirebaseServices = { app: FirebaseApp; auth: Auth; db: Firestore };
 

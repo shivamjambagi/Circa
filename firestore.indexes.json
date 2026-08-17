@@ -69,6 +69,24 @@
           "order": "ASCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "networkPeople",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "ownerUid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "visibility",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "displayName",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": []

@@ -5,6 +5,8 @@ service cloud.firestore {
     function permanentUser() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
     function projectPath(projectId) { return /databases/$(database)/documents/projects/$(projectId); }
     function memberPath(projectId, uid) { return /databases/$(database)/documents/projects/$(projectId)/members/$(uid); }
+    function contributionPath(projectId, uid) { return /databases/$(database)/documents/projects/$(projectId)/networkContributions/$(uid); }
+    function contributionEnabled(projectId, uid) { return exists(contributionPath(projectId, uid)) && get(contributionPath(projectId, uid)).data.enabled == true; }
     function invitePath(inviteId) { return /databases/$(database)/documents/invites/$(inviteId); }
     function project(projectId) { return get(projectPath(projectId)).data; }
     function projectAfter(projectId) { return getAfter(projectPath(projectId)).data; }
@@ -103,13 +105,13 @@ service cloud.firestore {
         allow update, delete: if signedIn() && resource.data.importedBy == request.auth.uid;
       }
       match /networkPeople/{personId} {
-        allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid || (activeMember(projectId) && resource.data.visibility == 'project'));
+        allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid || (activeMember(projectId) && contributionEnabled(projectId, resource.data.ownerUid)));
         allow create: if permanentUser() && activeMemberAfter(projectId) && projectAfter(projectId).projectMode == 'network' && request.resource.data.ownerUid == request.auth.uid && request.resource.data.visibility in ['private', 'project'] && !request.resource.data.keys().hasAny(['email', 'personalNotes', 'privateMetadata']);
         allow update: if signedIn() && resource.data.ownerUid == request.auth.uid && request.resource.data.ownerUid == resource.data.ownerUid && !request.resource.data.keys().hasAny(['email', 'personalNotes', 'privateMetadata']);
         allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
       }
       match /networkEdges/{edgeId} {
-        allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid || (activeMember(projectId) && resource.data.visibility == 'project'));
+        allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid || (activeMember(projectId) && contributionEnabled(projectId, resource.data.ownerUid)));
         allow create: if permanentUser() && activeMemberAfter(projectId) && projectAfter(projectId).projectMode == 'network' && request.resource.data.ownerUid == request.auth.uid && request.resource.data.visibility in ['private', 'project'];
         allow update: if signedIn() && resource.data.ownerUid == request.auth.uid && request.resource.data.ownerUid == resource.data.ownerUid;
         allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;

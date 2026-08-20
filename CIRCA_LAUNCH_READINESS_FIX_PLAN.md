@@ -34,14 +34,14 @@ The old audit's statement that GitHub was empty is no longer current. The public
 | Check | Result | Meaning |
 | --- | --- | --- |
 | clean-clone CI order | Pass | After a fresh `npm ci`, with `dist` still absent, `npm run typecheck` passed before any build artifact existed. Source checking no longer imports generated output. |
-| `npm test` | Pass | Cross-platform canonical gate: TypeScript, ESLint, 187/187 functional/static assertions, 15/15 Firestore emulator assertions, production build, 2/2 rendered-route tests and five headless-browser journeys. |
+| `npm test` | Pass | Cross-platform canonical gate: TypeScript, ESLint, 188/188 functional/static assertions, 15/15 Firestore emulator assertions, production build, 2/2 rendered-route tests and five headless-browser journeys. |
 | missing-Firebase dedicated build | Pass | With `.env.local` temporarily absent, `npm run build` and Personal/Compose-entry browser smoke passed; the file was restored in `finally`. |
 | `node --test tests/v17-critical-hardening.test.mjs` | 11 pass, 0 fail | Every retained P0 stop-ship assertion is green. |
 | `npm run audit:production` | 0 vulnerabilities | Firebase Admin 14.3.0 plus scoped fixed `uuid` overrides remove the transitive moderate advisory; `npm ls` is valid. |
 | generated Netlify function | Pass | `npm run build` generated and runtime-validated `dist/netlify/functions/circa-app.mjs`; pinned Netlify CLI 27.1.2 also packaged it successfully with the production worker dependency. |
-| `npm run scan:artifact` | Pass | 47 client artifact files contained no server secret patterns or source maps. |
+| `npm run scan:artifact` | Pass | 61 clean-CI client artifact files contained no server secret patterns or source maps. |
 | runtime/public removed-feature scan | 0 matches | Shipped source, public files, environment template, active docs and build remain free of the removed feature name. |
-| artifact provenance | Local pass / external open | `/release.json` records the current local HEAD and `dirty: true`; a clean reviewed commit and production deploy remain required. |
+| artifact provenance | Local pass / external open | An isolated committed clean-clone baseline produced `/release.json` with its exact commit and `dirty: false`; a clean reviewed commit and production deploy remain required. |
 | CI and controlled rules release source | Implemented / external open | GitHub workflows include release gate, secret/dependency/artifact scans and a workload-identity Firestore release job; remote execution/protection is not yet evidenced. |
 
 ## Definition of launch-ready
@@ -173,7 +173,7 @@ Acceptance gates: the nine V17 hardening assertions relevant to Personal pass, q
 
 ### P0.4 — remove or finish the broken cloud migration feature
 
-**Status: COMPLETE AND VERIFIED LOCALLY using option 1.** The public cloud-copy card, migration implementation, styles, imports and active documentation claims were removed. Personal is explicitly browser-local and no build/runtime cloud-migration surface remains. Evidence: the migration-absence P0 assertion, 187/187 functional/static tests and the production build.
+**Status: COMPLETE AND VERIFIED LOCALLY using option 1.** The public cloud-copy card, migration implementation, styles, imports and active documentation claims were removed. Personal is explicitly browser-local and no build/runtime cloud-migration surface remains. Evidence: the migration-absence P0 assertion, 188/188 functional/static tests and the production build.
 
 Original defect (resolved by removal): `CloudMigrationCard` was public UI, but its marker and workspace paths were denied by Firestore rules, the migration had no retriable state machine, and the product had no complete cloud-map open/restore/export/delete experience.
 
@@ -230,7 +230,9 @@ Required design:
 
 **Status: COMPLETE AND VERIFIED LOCALLY; REQUIRES EXTERNAL ACTION for remote CI, branch protection, deploy preview, clean production deployment and rollback drill.** Netlify is canonical; alternative D1/R2 runtime/example scaffolding is removed and the retained Cloudflare package is documented as build-time Fetch-worker bundling only. Cross-platform Node runners automatically discover tests, allocate collision-resistant emulator ports, build/validate the artifact and run real Chrome smoke. `/release.json` records commit and working-tree state; CI rejects dirty artifacts. `npm test` passes on Windows. GitHub release and controlled Firestore workflows, release/rollback documentation and artifact scanning are checked in locally but not yet run on a pushed reviewed commit.
 
-Clean-CI repair evidence (20 August 2026): the checked-in Netlify adapter is now a source-only typed factory and has no import from `dist`. After Vite creates `dist/server/index.js`, the cross-platform Node build deliberately generates a deployable entry with a static worker import in `dist/netlify/functions`. A fresh `npm ci` left `dist` absent and source typechecking passed before build; the full canonical suite then passed 187/187 functional/static and 15/15 emulator assertions. Artifact validation invoked the generated handler against the real worker, and Netlify CLI 27.1.2 packaged that function successfully. The remote PR gate remains external evidence until this repair is committed and pushed.
+Clean-CI repair evidence (20 August 2026): the checked-in Netlify adapter is now a source-only typed factory and has no import from `dist`. After Vite creates `dist/server/index.js`, the cross-platform Node build deliberately generates a deployable entry with a static worker import in `dist/netlify/functions`. A fresh `npm ci` left `dist` absent and source typechecking passed before build. Artifact validation invoked the generated handler against the real worker, and Netlify CLI 27.1.2 packaged that function successfully.
+
+Dirty-worktree CI repair evidence (20 August 2026): `gitleaks/gitleaks-action@v2` was reproduced with its pinned 8.24.3 command and identified as the sole writer of untracked root-level `results.sarif`; running the build with that report present reproduced the exact CI failure and `dirty: true`. The workflow now preserves that known report under ignored `outputs/security`, then runs a cross-platform cleanliness diagnostic that prints `git status --porcelain`, `git diff --name-status` and unexpected untracked files and fails on any remaining mutation. A separate LF-line-ending clone with the repair committed as its baseline ran the real scanner sequence, `npm ci`, audit, source typecheck, lint, 188/188 functional/static assertions, 15/15 emulator assertions, `CI=true` build, repeated artifact validation, 2/2 rendered-route checks and five browser journeys. Every checkpoint and the final status were clean; release metadata recorded `dirty: false`. The remote PR rerun remains external evidence until this repair is committed and pushed.
 
 Required changes:
 
@@ -477,7 +479,7 @@ Status is the state of the current local source, not a claim about a future inst
 | 1 | GitHub source-of-truth repository is empty | Historical statement is resolved: the public repository now has source and history; local changes still are not on the canonical remote. | P0.7 canonical branch and commit provenance |
 | 2 | Cannot prove which source produced Netlify | Locally addressed by commit/dirty release metadata; production deployment provenance requires external verification. | P0.7 clean reviewed commit and Netlify evidence |
 | 3 | Personal Circa appears to require sign-in | Resolved and browser-tested locally, including a missing-Firebase build. | Keep P0.2 account-free regression gate |
-| 4 | Production is not tied to a passed acceptance suite | CI/release-gate source is implemented; its source-first order is proven from a fresh `npm ci` without `dist`, and the canonical suite passes locally. Remote required-check evidence is external. | P0.7 remote CI/protection gate |
+| 4 | Production is not tied to a passed acceptance suite | CI/release-gate source is implemented; source-first ordering and scanner-artifact hygiene are proven in an isolated clean clone, and the canonical suite passes locally. Remote required-check evidence is external. | P0.7 remote CI/protection gate |
 | 5 | Firestore production rules deployment unverified | 15/15 adversarial emulator tests pass locally; deployed hashes and two-user smoke remain external. | P0.5/P0.9 controlled deploy evidence |
 | 6 | App Check production enforcement unverified | External verification required | P0.6/P0.9 monitoring-first enforcement record |
 | 7 | Public Privacy information undiscoverable | Resolved locally with versioned public routes and global navigation; production publication remains external. | Keep P0.8 route/navigation gate |
@@ -540,7 +542,7 @@ Status is the state of the current local source, not a claim about a future inst
 | 64 | Cloud backup/restore policy | Ownership, daily/35-day target and drill procedure documented; production job and observed restore remain external. | P0.9 external backup gate |
 | 65 | Destructive confirmation and cleanup | P0 introducer, workspace recovery and recursive owned-space deletion paths are resolved locally. | Keep P0 regressions; P1 scheduled cleanup remains |
 | 66 | Build scripts are platform-dependent | Resolved: cross-platform Node build/test runners pass on Windows; clean source typechecking is independent of generated output and CI targets Linux. | Keep P0.7 canonical gate |
-| 67 | Linux CI pipeline | Workflow source implemented and its clean `npm ci` → source typecheck → build ordering is reproduced locally; first successful protected-branch run remains external. | P0.7 remote CI evidence |
+| 67 | Linux CI pipeline | Workflow source implemented; clean scanner → `npm ci` → source typecheck → test → build ordering and `dirty: false` metadata are reproduced in an LF clean clone. First successful protected-branch rerun remains external. | P0.7 remote CI evidence |
 | 68 | Production deploys a known commit | Artifact commit plus dirty/clean metadata implemented; clean reviewed production deploy remains external. | P0.7 immutable deploy evidence |
 | 69 | Preview deployments before production | Preview requirement/runbook implemented; actual Netlify preview and approval remain external. | P0.7 external preview gate |
 | 70 | Real browser E2E tests | Resolved locally for Personal, Auth, Community, Network and Compose entry using real headless Chrome. | Keep P0.7 browser gate |
@@ -589,9 +591,9 @@ Locally completed and verified:
 - [x] The incomplete Personal cloud migration is absent from runtime, UI and active documentation.
 - [x] Community proposal-only publication, join/rejoin, owner preservation, invite limiting and cross-project isolation pass 15/15 emulator tests and local browser/static gates.
 - [x] Provider-backed Compose has permanent authentication, App Check readiness, shared throttling, streamed byte/response limits, timeout/abort, minimal payloads and accurate disclosure; local Compose/Ask remains account-free.
-- [x] One cross-platform `npm test` passes TypeScript, ESLint, all 187 functional/static assertions, 15 emulator assertions, the production build, rendered-route checks and five real-browser journeys.
+- [x] One cross-platform `npm test` passes TypeScript, ESLint, all 188 functional/static assertions, 15 emulator assertions, the production build, rendered-route checks and five real-browser journeys.
 - [x] A fresh `npm ci` leaves `dist` absent and passes source typechecking before build; the generated Netlify function validates at runtime and packages with the pinned Netlify CLI.
-- [x] The local production artifact validates, records commit plus dirty/clean state, and its 47 client files pass the secret/source-map scan; the production dependency audit reports 0 vulnerabilities.
+- [x] The local production artifact validates, records commit plus dirty/clean state, and its 61 clean-CI client files pass the secret/source-map scan; the production dependency audit reports 0 vulnerabilities.
 - [x] Public privacy/help/terms source, storage/data maps, local lifecycle controls, security headers, 404/error/offline states, cache/logout policy, redacted failure hooks and operational runbooks are implemented and tested.
 
 REQUIRES EXTERNAL ACTION before unrestricted public/cloud launch:

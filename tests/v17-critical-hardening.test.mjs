@@ -84,10 +84,18 @@ test("all checked-in tests have a cross-platform runner and CI", () => {
   const build = read("scripts/build.mjs");
   const netlify = read("netlify.toml");
   const ci = read(".github/workflows/ci.yml");
+  const collector = read("scripts/collect-gitleaks-report.mjs");
+  const cleanCheck = read("scripts/check-clean-worktree.mjs");
   assert.doesNotMatch(adapter, /dist\/server\/index\.js/);
   assert.match(adapter, /createNetlifyHandler/);
   assert.match(build, /writeNetlifyFunction/);
   assert.match(build, /dist\/netlify\/functions\/circa-app\.mjs/);
   assert.match(netlify, /functions = "dist\/netlify\/functions"/);
   assert.ok(ci.indexOf("npm run typecheck") < ci.indexOf("npm run build"));
+  assert.match(ci, /npm run ci:collect-security-report/);
+  assert.match(ci, /npm run check:clean/);
+  assert.match(collector, /results\.sarif/);
+  assert.match(collector, /outputs["', ]+security/);
+  assert.match(cleanCheck, /git diff/);
+  assert.match(cleanCheck, /ls-files/);
 });

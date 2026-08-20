@@ -14,6 +14,8 @@
     "test:unit": "node scripts/run-tests.mjs",
     "test:firestore": "node scripts/run-firestore-tests.mjs",
     "test:critical": "node scripts/critical-e2e.mjs",
+    "ci:collect-security-report": "node scripts/collect-gitleaks-report.mjs",
+    "check:clean": "node scripts/check-clean-worktree.mjs",
     "audit:production": "npm audit --omit=dev --audit-level=high",
     "scan:artifact": "node scripts/scan-artifact.mjs",
     "typecheck": "tsc --noEmit",

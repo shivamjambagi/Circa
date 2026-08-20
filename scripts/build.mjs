@@ -11,10 +11,10 @@ function currentCommit() {
   return commit;
 }
 
-function workingTreeIsDirty() {
-  const result = spawnSync("git", ["status", "--porcelain"], { encoding: "utf8" });
+function workingTreeStatus() {
+  const result = spawnSync("git", ["status", "--porcelain=v1", "--untracked-files=all"], { encoding: "utf8" });
   if (result.status !== 0) throw new Error("Git status is required to build release metadata.");
-  return Boolean(result.stdout.trim());
+  return result.stdout.trim();
 }
 
 async function writeNetlifyFunction() {
@@ -60,7 +60,9 @@ if (exitCode !== 0) process.exit(exitCode);
 
 await writeNetlifyFunction();
 const commit = currentCommit();
-const metadata = { product: "Circa", hosting: "netlify", commit, dirty: workingTreeIsDirty(), builtAt: new Date().toISOString() };
+const worktreeStatus = workingTreeStatus();
+if (worktreeStatus) console.error(`[release] Git worktree changes detected before release metadata:\n${worktreeStatus}`);
+const metadata = { product: "Circa", hosting: "netlify", commit, dirty: Boolean(worktreeStatus), builtAt: new Date().toISOString() };
 await mkdir("dist/client", { recursive: true });
 await writeFile("dist/client/release.json", `${JSON.stringify(metadata, null, 2)}\n`);
 const validation = spawnSync(process.execPath, ["scripts/validate-artifact.mjs"], { stdio: "inherit" });

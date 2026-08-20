@@ -1,13 +1,10 @@
 [build]
   command = "npm run build"
   publish = "dist/client"
-  functions = "netlify/functions"
+  functions = "dist/netlify/functions"
 
 [functions]
   node_bundler = "esbuild"
-
-[functions."circa-app"]
-  included_files = ["dist/server/**", "dist/.openai/hosting.json"]
 
 [[headers]]
   for = "/*"

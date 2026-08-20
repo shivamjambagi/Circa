@@ -1,12 +1,23 @@
-// Netlify adapter for Circa's checked production worker artifact.
-import artifact from "../../dist/server/index.js";
+export interface CircaWorkerContext {
+  waitUntil(promise: Promise<unknown>): void;
+  passThroughOnException(): void;
+}
 
-const worker = artifact as unknown as { fetch(request: Request, env: NodeJS.ProcessEnv, context: { waitUntil(promise: Promise<unknown>): void; passThroughOnException(): void }): Promise<Response> };
+export interface CircaWorkerArtifact {
+  fetch(request: Request, env: NodeJS.ProcessEnv, context: CircaWorkerContext): Promise<Response>;
+}
 
-export default async function handler(request: Request) {
-  const context = {
-    waitUntil(promise: Promise<unknown>) { void promise.catch(() => undefined); },
-    passThroughOnException() { /* Netlify owns final exception handling. */ },
+/**
+ * Source-only Netlify handler contract. The release build injects the completed
+ * Vinext worker artifact into this factory and writes the deployable function to
+ * dist/netlify/functions. Source typechecking therefore never depends on dist.
+ */
+export function createNetlifyHandler(worker: CircaWorkerArtifact, environment: NodeJS.ProcessEnv = process.env) {
+  return async function handler(request: Request): Promise<Response> {
+    const context: CircaWorkerContext = {
+      waitUntil(promise) { void promise.catch(() => undefined); },
+      passThroughOnException() { /* Netlify owns final exception handling. */ },
+    };
+    return worker.fetch(request, environment, context);
   };
-  return worker.fetch(request, process.env, context);
 }

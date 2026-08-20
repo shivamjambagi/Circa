@@ -6,7 +6,8 @@ import { sites } from "./build/sites-vite-plugin.ts";
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
 export default defineConfig(async () => {
-  // Netlify runs the generated Fetch worker through netlify/functions/circa-app.ts.
+  // The release build injects this generated Fetch worker into the typechecked
+  // handler factory and writes dist/netlify/functions/circa-app.mjs for Netlify.
   // The Cloudflare Vite plugin is used only as the worker bundler; Circa has no
   // Cloudflare deployment, D1 database, R2 bucket or runtime binding.
   const { cloudflare } = await import("@cloudflare/vite-plugin");

@@ -2,7 +2,7 @@
 
 ## Canonical release path
 
-Netlify is Circa's only production host. It builds the protected `main` branch with `npm run build`, publishes `dist/client`, and serves Vinext server routes through `netlify/functions/circa-app.ts`. The Cloudflare Vite package is a build-time Fetch-worker bundler only; Circa has no Cloudflare deployment, D1 or R2 runtime.
+Netlify is Circa's only production host. It builds the protected `main` branch with `npm run build`, publishes `dist/client`, and serves Vinext server routes through the generated `dist/netlify/functions/circa-app.mjs`. The checked-in `netlify/functions/circa-app.ts` is a source-only typed handler factory; the build injects `dist/server/index.js` only after that worker exists. The Cloudflare Vite package is a build-time Fetch-worker bundler only; Circa has no Cloudflare deployment, D1 or R2 runtime.
 
 Before production, require the GitHub `Circa release gate`, a reviewed pull request, and a successful Netlify deploy preview. Confirm `/release.json` contains the intended commit and record the deploy URL, commit, Firestore rules hash and indexes hash in the release record.
 

@@ -1,7 +1,7 @@
 import { access, readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 
-const required = ["dist/server/index.js", "dist/client", "dist/.openai/hosting.json", "dist/client/release.json"];
+const required = ["dist/server/index.js", "dist/netlify/functions/circa-app.mjs", "dist/client", "dist/.openai/hosting.json", "dist/client/release.json"];
 for (const path of required) await access(path);
 JSON.parse(await readFile("dist/.openai/hosting.json", "utf8"));
 const release = JSON.parse(await readFile("dist/client/release.json", "utf8"));
@@ -14,4 +14,11 @@ const workerUrl = pathToFileURL(`${process.cwd()}/dist/server/index.js`);
 workerUrl.searchParams.set("artifact-validation", `${process.pid}-${Date.now()}`);
 const worker = await import(workerUrl.href);
 if (!worker.default || typeof worker.default.fetch !== "function") throw new Error("The server artifact must export default.fetch(request, env, context).");
+
+const functionUrl = pathToFileURL(`${process.cwd()}/dist/netlify/functions/circa-app.mjs`);
+functionUrl.searchParams.set("artifact-validation", `${process.pid}-${Date.now()}`);
+const netlifyFunction = await import(functionUrl.href);
+if (typeof netlifyFunction.default !== "function") throw new Error("The generated Netlify artifact must export a default request handler.");
+const response = await netlifyFunction.default(new Request("http://circa.test/?workspace=1", { headers: { accept: "text/html" } }));
+if (!(response instanceof Response) || response.status !== 200) throw new Error("The generated Netlify request handler must serve the production worker.");
 console.log(`Validated Netlify artifact for commit ${release.commit}${release.dirty ? " (dirty local tree)" : ""}.`);

@@ -80,4 +80,14 @@ test("all checked-in tests have a cross-platform runner and CI", () => {
   assert.equal(pkg.scripts["test:unit"], "node scripts/run-tests.mjs");
   assert.match(pkg.scripts.test, /test:firestore/);
   assert.ok(pkg.scripts.typecheck);
+  const adapter = read("netlify/functions/circa-app.ts");
+  const build = read("scripts/build.mjs");
+  const netlify = read("netlify.toml");
+  const ci = read(".github/workflows/ci.yml");
+  assert.doesNotMatch(adapter, /dist\/server\/index\.js/);
+  assert.match(adapter, /createNetlifyHandler/);
+  assert.match(build, /writeNetlifyFunction/);
+  assert.match(build, /dist\/netlify\/functions\/circa-app\.mjs/);
+  assert.match(netlify, /functions = "dist\/netlify\/functions"/);
+  assert.ok(ci.indexOf("npm run typecheck") < ci.indexOf("npm run build"));
 });

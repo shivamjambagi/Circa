@@ -2,10 +2,14 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("Open Circa gates into the authenticated route chooser", async () => {
+test("Open Circa enters the account-free local workspace", async () => {
   const home = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
   const start = await readFile(new URL("../app/start/page.tsx", import.meta.url), "utf8");
-  assert.match(home, /\/auth\?returnTo=\/start/);
+  const layout = await readFile(new URL("../app/layout.tsx", import.meta.url), "utf8");
+  assert.match(home, /const startHref = "\/\?workspace=1"/);
+  assert.doesNotMatch(home, /useFirebaseUser|authLoading|window\.location\.replace\(`\/auth/);
+  assert.doesNotMatch(layout, /FirebaseProvider/);
+  assert.doesNotMatch(start, /useFirebaseUser|router\.replace\("\/auth/);
   assert.match(start, />Personal Map</);
   assert.match(start, />Join a Community</);
   assert.match(start, />Create a Community</);
@@ -28,7 +32,6 @@ test("Community member navigation is deliberately small and role-aware", async (
   assert.match(source, /\["events", "Events"\]/);
   assert.match(source, /canReview \? \[\["manage"/);
   assert.doesNotMatch(source, /\["ask", "Ask"\]/);
-  assert.doesNotMatch(source, /\["whatsapp", "WhatsApp"\]/);
   assert.doesNotMatch(source, /\["suggestions", "Suggestions"\]/);
 });
 
@@ -77,8 +80,9 @@ test("Community members can add for review but cannot edit published information
   assert.match(source, /if \(!canReview \|\| !selected/);
   assert.doesNotMatch(source, /Suggest correction/);
   assert.doesNotMatch(source, /Submit correction/);
-  assert.match(source, /Delete my contact/);
-  assert.match(source, /Delete my information/);
+  assert.match(source, /Request removal/);
+  assert.match(source, /Contributor requested removal/);
+  assert.doesNotMatch(source, /Delete my contact|Delete my information/);
   assert.doesNotMatch(source, /will be verified by an admin/i);
 });
 
@@ -105,12 +109,12 @@ test("auth return path is hydration-stable on the first client render", async ()
   assert.doesNotMatch(auth, /useMemo\(\(\) => typeof window/);
 });
 
-test("Community creation remains compatible while V16 member-directory rules are staged", async () => {
+test("Community creation atomically includes its safe owner directory entry", async () => {
   const repository = await readFile(new URL("../app/cloud/communityRepository.ts", import.meta.url), "utf8");
   const commitIndex = repository.indexOf("await batch.commit();");
   const directoryIndex = repository.indexOf('"memberDirectory", user.uid');
-  assert.ok(commitIndex > -1 && directoryIndex > commitIndex, "memberDirectory must not block the atomic Community create batch");
-  assert.match(repository, /Non-blocking during the V15 -> V16 rules transition/);
+  assert.ok(directoryIndex > -1 && directoryIndex < commitIndex, "memberDirectory must be part of the atomic Community create batch");
+  assert.match(repository, /membership-created/);
 });
 
 test("Community owner can still see a safe member count before member-directory rules are deployed", async () => {
@@ -151,12 +155,13 @@ test("Admin Community forms are focused rather than survey-like", async () => {
   assert.match(source, /Approve useful member additions or reject them in one click/);
 });
 
-test("Member-owned published information is explicitly tracked for self-delete", async () => {
+test("Member-owned published information stays attributed but removal requires review", async () => {
   const repository = await readFile(new URL("../app/cloud/communityRepository.ts", import.meta.url), "utf8");
   const rules = await readFile(new URL("../firestore.rules", import.meta.url), "utf8");
   assert.match(repository, /createdBy: proposal\.submittedBy/);
   assert.match(repository, /createdByName: proposal\.submittedByName/);
-  assert.match(rules, /resource\.data\.createdBy == request\.auth\.uid/);
+  assert.doesNotMatch(rules, /resource\.data\.createdBy == request\.auth\.uid/);
+  assert.match(rules, /allow delete: if adminAfter\(projectId\)/);
 });
 
 test("Admin nav and Contacts header get the requested small readability bump", async () => {

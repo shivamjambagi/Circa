@@ -1,2 +1,0 @@
-export function json(body: unknown, status = 200) { return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" } }); }
-export function errorResponse(error: unknown, fallback = "Request failed.") { const message = error instanceof Error ? error.message : fallback; const status = /required|permission|member|owner|admin/i.test(message) ? 403 : /configured|available/i.test(message) ? 503 : /too many/i.test(message) ? 429 : 400; return json({ error: message }, status); }

@@ -29,9 +29,6 @@ export type CommunityMember = {
   consentedAt?: unknown;
   consentVersion?: number;
   joinedAt?: unknown;
-  whatsappConnected?: boolean;
-  maskedPhone?: string;
-  reminderOptIn?: boolean;
   contributionEnabled?: boolean;
 };
 
@@ -89,6 +86,7 @@ export type CommunityItem = {
   order: number;
   createdBy?: string;
   createdByName?: string;
+  contentVersion?: number;
   schemaVersion: number;
 };
 
@@ -99,6 +97,7 @@ export type EditProposal = {
   itemId: string;
   operation: "create" | "update" | "delete";
   currentItem?: CommunityItem | null;
+  baseVersion: number;
   proposedItem: Omit<CommunityItem, "id"> | null;
   reason: string;
   status: "pending" | "approved" | "rejected";
@@ -126,12 +125,4 @@ export type PublicInvite = {
   createdAt?: unknown;
   revokedAt?: unknown;
   schemaVersion: number;
-};
-
-export type WhatsAppIntegration = {
-  available: boolean;
-  connected: boolean;
-  maskedPhone?: string;
-  questionOptIn: boolean;
-  reminderCategories: string[];
 };

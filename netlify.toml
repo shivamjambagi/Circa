@@ -1,13 +1,31 @@
 [build]
   command = "npm run build"
   publish = "dist/client"
-  functions = "netlify/functions"
+  functions = "dist/netlify/functions"
 
 [functions]
   node_bundler = "esbuild"
 
-[functions."circa-app"]
-  included_files = ["dist/server/**", "dist/.openai/hosting.json"]
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Content-Security-Policy = "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; script-src 'self' 'unsafe-inline' https://apis.google.com https://www.gstatic.com https://www.google.com https://www.recaptcha.net; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com wss://*.firebaseio.com https://securetoken.googleapis.com https://identitytoolkit.googleapis.com https://firebaseappcheck.googleapis.com; frame-src https://circa-4bea4.firebaseapp.com https://www.google.com https://www.recaptcha.net https://accounts.google.com; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=()"
+    Cross-Origin-Opener-Policy = "same-origin-allow-popups"
+
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/release.json"
+  [headers.values]
+    Cache-Control = "no-store"
 
 [[redirects]]
   from = "/*"

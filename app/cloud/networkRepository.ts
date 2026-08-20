@@ -58,16 +58,48 @@ async function getAll<T>(makeQuery: (cursor?: QueryDocumentSnapshot<DocumentData
   return rows;
 }
 
-export async function listNetworkPeople(projectId: string, user: User, sharedOnly = false) {
+async function enabledContributionUids(projectId: string) {
+  const base = collection(getFirebaseServices().db, "projects", projectId, "networkContributions");
+  const snapshot = await getDocs(query(base, where("enabled", "==", true), limit(2000)));
+  return snapshot.docs.map((item) => item.id);
+}
+
+async function listPeopleForOwner(projectId: string, ownerUid: string) {
   const base = collection(getFirebaseServices().db, "projects", projectId, "networkPeople");
   const pageSize = 100;
-  return getAll<NetworkPerson>((cursor) => sharedOnly ? query(base, where("visibility", "==", "project"), orderBy("displayName", "asc"), ...(cursor ? [startAfter(cursor)] : []), limit(pageSize)) : query(base, where("ownerUid", "==", user.uid), orderBy("displayName", "asc"), ...(cursor ? [startAfter(cursor)] : []), limit(pageSize)), pageSize);
+  return getAll<NetworkPerson>((cursor) =>
+    query(
+      base,
+      where("ownerUid", "==", ownerUid),
+      orderBy("displayName", "asc"),
+      ...(cursor ? [startAfter(cursor)] : []),
+      limit(pageSize)
+    ), pageSize);
+}
+
+async function listEdgesForOwner(projectId: string, ownerUid: string) {
+  const base = collection(getFirebaseServices().db, "projects", projectId, "networkEdges");
+  const pageSize = 400;
+  return getAll<NetworkEdge>((cursor) =>
+    query(
+      base,
+      where("ownerUid", "==", ownerUid),
+      orderBy("__name__"),
+      ...(cursor ? [startAfter(cursor)] : []),
+      limit(pageSize)
+    ), pageSize);
+}
+
+export async function listNetworkPeople(projectId: string, user: User, sharedOnly = false) {
+  if (!sharedOnly) return listPeopleForOwner(projectId, user.uid);
+  const owners = await enabledContributionUids(projectId);
+  return (await Promise.all(owners.map((ownerUid) => listPeopleForOwner(projectId, ownerUid)))).flat();
 }
 
 export async function listNetworkEdges(projectId: string, user: User, sharedOnly = false) {
-  const base = collection(getFirebaseServices().db, "projects", projectId, "networkEdges");
-  const pageSize = 400;
-  return getAll<NetworkEdge>((cursor) => sharedOnly ? query(base, where("visibility", "==", "project"), orderBy("__name__"), ...(cursor ? [startAfter(cursor)] : []), limit(pageSize)) : query(base, where("ownerUid", "==", user.uid), orderBy("__name__"), ...(cursor ? [startAfter(cursor)] : []), limit(pageSize)), pageSize);
+  if (!sharedOnly) return listEdgesForOwner(projectId, user.uid);
+  const owners = await enabledContributionUids(projectId);
+  return (await Promise.all(owners.map((ownerUid) => listEdgesForOwner(projectId, ownerUid)))).flat();
 }
 
 export async function listAuthorisedNetworkGraph(projectId: string, user: User) {
@@ -84,7 +116,10 @@ export async function listAuthorisedNetworkGraph(projectId: string, user: User) 
   }
   const people = rawPeople.filter((person) => alias.get(person.id) === person.id);
   const rawEdges = [...new Map([...privateEdges, ...sharedEdges].map((edge) => [edge.id, edge])).values()];
-  const edges = rawEdges.map((edge) => ({ ...edge, sourcePersonId: alias.get(edge.sourcePersonId) || edge.sourcePersonId, targetPersonId: alias.get(edge.targetPersonId) || edge.targetPersonId })).filter((edge) => edge.sourcePersonId !== edge.targetPersonId);
+  const personIds = new Set(people.map((person) => person.id));
+  const edges = rawEdges
+    .map((edge) => ({ ...edge, sourcePersonId: alias.get(edge.sourcePersonId) || edge.sourcePersonId, targetPersonId: alias.get(edge.targetPersonId) || edge.targetPersonId }))
+    .filter((edge) => edge.sourcePersonId !== edge.targetPersonId && personIds.has(edge.sourcePersonId) && personIds.has(edge.targetPersonId));
   return { people, edges, complete: true, loadedPeople: rawPeople.length, loadedEdges: rawEdges.length };
 }
 
@@ -98,18 +133,86 @@ export async function bindSelfLinkedInIdentity(projectId: string, user: User, pr
   return { profileUrl: normal, identityFingerprint: fingerprint };
 }
 
+const CONTRIBUTION_PRIVACY_PREP_VERSION = 2;
+
+async function prepareNetworkContributionPrivacy(projectId: string, user: User) {
+  const { db } = getFirebaseServices();
+  const contributionRef = doc(db, "projects", projectId, "networkContributions", user.uid);
+  const existing = await getDoc(contributionRef);
+  const preparedVersion = existing.exists() ? Number(existing.data().privacyPreparedVersion || 0) : 0;
+  if (preparedVersion >= CONTRIBUTION_PRIVACY_PREP_VERSION) return;
+
+  // Revoke read permission first. Shared reads stay closed for the entire one-time privacy preparation.
+  await setDoc(contributionRef, {
+    ownerUid: user.uid,
+    enabled: false,
+    consentVersion: 1,
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+
+  let cursor: QueryDocumentSnapshot<DocumentData> | undefined;
+  for (;;) {
+    const page = await getDocs(query(
+      collection(db, "projects", projectId, "networkPeople"),
+      where("ownerUid", "==", user.uid),
+      orderBy("__name__"),
+      ...(cursor ? [startAfter(cursor)] : []),
+      limit(400)
+    ));
+    if (page.empty) break;
+
+    const batch = writeBatch(db);
+    page.docs.forEach((snapshot) => {
+      batch.update(snapshot.ref, {
+        email: deleteField(),
+        personalNotes: deleteField(),
+        privateMetadata: deleteField(),
+        updatedAt: serverTimestamp()
+      });
+    });
+    await batch.commit();
+
+    if (page.size < 400) break;
+    cursor = page.docs.at(-1);
+  }
+
+  await setDoc(contributionRef, {
+    ownerUid: user.uid,
+    enabled: false,
+    consentVersion: 1,
+    privacyPreparedVersion: CONTRIBUTION_PRIVACY_PREP_VERSION,
+    privacyPreparedAt: serverTimestamp(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
+}
+
 export async function setNetworkContribution(projectId: string, user: User, enabled: boolean) {
   const { db } = getFirebaseServices();
-  await setDoc(doc(db, "projects", projectId, "networkContributions", user.uid), { enabled, visibility: "project", contributedAt: enabled ? serverTimestamp() : null, updatedAt: serverTimestamp(), consentVersion: 1, ownerUid: user.uid, schemaVersion: 1 }, { merge: true });
-  for (const collectionName of ["networkPeople", "networkEdges"]) {
-    let cursor: QueryDocumentSnapshot<DocumentData> | undefined;
-    for (;;) {
-      const page = await getDocs(query(collection(db, "projects", projectId, collectionName), where("ownerUid", "==", user.uid), orderBy("__name__"), ...(cursor ? [startAfter(cursor)] : []), limit(400)));
-      if (page.empty) break;
-      const batch = writeBatch(db); page.docs.forEach((snapshot) => batch.update(snapshot.ref, { visibility: enabled ? "project" : "private", ...(collectionName === "networkPeople" ? { email: deleteField(), personalNotes: deleteField(), privateMetadata: deleteField() } : {}), updatedAt: serverTimestamp() })); await batch.commit();
-      if (page.size < 400) break; cursor = page.docs.at(-1);
-    }
+  const contributionRef = doc(db, "projects", projectId, "networkContributions", user.uid);
+
+  if (!enabled) {
+    // OFF is deliberately cheap and immediate: one consent document closes shared reads.
+    await setDoc(contributionRef, {
+      ownerUid: user.uid,
+      enabled: false,
+      consentVersion: 1,
+      revokedAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
+    }, { merge: true });
+    return;
   }
+
+  // First ON may perform one legacy privacy cleanup. Later ON operations are one consent write.
+  await prepareNetworkContributionPrivacy(projectId, user);
+  await setDoc(contributionRef, {
+    ownerUid: user.uid,
+    enabled: true,
+    visibility: "project",
+    consentVersion: 1,
+    consentedAt: serverTimestamp(),
+    revokedAt: deleteField(),
+    updatedAt: serverTimestamp()
+  }, { merge: true });
 }
 
 export async function getNetworkContribution(projectId: string, uid: string) {

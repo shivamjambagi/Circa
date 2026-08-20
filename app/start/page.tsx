@@ -1,24 +1,8 @@
-"use client";
-
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { signOutOfCirca } from "../firebase/auth";
-import { useFirebaseUser } from "../firebase/FirebaseProvider";
-
 function Mark() { return <span className="brand-mark" aria-hidden="true"><i /><i /></span>; }
 
 export default function StartPage() {
-  const router = useRouter();
-  const { user, loading } = useFirebaseUser();
-
-  useEffect(() => {
-    if (!loading && (!user || user.isAnonymous)) router.replace("/auth?returnTo=/start");
-  }, [loading, router, user]);
-
-  if (loading || !user || user.isAnonymous) return <main className="cloud-page centred-state" role="status">Preparing your Circa options…</main>;
-
   return <main className="cloud-page start-page">
-    <header className="cloud-header"><a className="brand" href="/"><Mark /><span className="brand-name">Circa<sup>beta</sup></span></a><div className="account-header-actions"><a href="/account">Account</a><button onClick={async () => { await signOutOfCirca(); router.replace("/"); }}>Sign out</button></div></header>
+    <header className="cloud-header"><a className="brand" href="/"><Mark /><span className="brand-name">Circa<sup>beta</sup></span></a><div className="account-header-actions"><a href="/auth">Sign in</a><a href="/">Home</a></div></header>
     <section className="start-intro"><p className="eyebrow"><span /> Choose your route</p><h1>How do you want to<br /><em>use Circa?</em></h1><p>Personal maps are private and local-first. Communities are shared spaces with real members, useful contacts and events.</p></section>
     <section className="start-routes" aria-label="Circa routes">
       <article className="start-route personal-route"><small>Private · Local-first</small><h2>Personal Map</h2><p>Map friends, family, school, work or a private Community map. These maps stay in this browser by default.</p><a className="button button-dark" href="/?workspace=1">Start a personal map</a></article>

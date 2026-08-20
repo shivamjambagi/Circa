@@ -5,7 +5,10 @@ service cloud.firestore {
     function permanentUser() { return signedIn() && request.auth.token.firebase.sign_in_provider != 'anonymous'; }
     function projectPath(projectId) { return /databases/$(database)/documents/projects/$(projectId); }
     function memberPath(projectId, uid) { return /databases/$(database)/documents/projects/$(projectId)/members/$(uid); }
+    function contributionPath(projectId, uid) { return /databases/$(database)/documents/projects/$(projectId)/networkContributions/$(uid); }
+    function contributionEnabled(projectId, uid) { return exists(contributionPath(projectId, uid)) && get(contributionPath(projectId, uid)).data.enabled == true; }
     function invitePath(inviteId) { return /databases/$(database)/documents/invites/$(inviteId); }
+    function itemPath(projectId, listId, itemId) { return /databases/$(database)/documents/projects/$(projectId)/lists/$(listId)/items/$(itemId); }
     function project(projectId) { return get(projectPath(projectId)).data; }
     function projectAfter(projectId) { return getAfter(projectPath(projectId)).data; }
     function member(projectId, uid) { return get(memberPath(projectId, uid)).data; }
@@ -22,6 +25,13 @@ service cloud.firestore {
         get(invitePath(inviteId)).data.projectId == projectId &&
         get(invitePath(inviteId)).data.status == 'active' &&
         (get(invitePath(inviteId)).data.expiresAt == null || get(invitePath(inviteId)).data.expiresAt > request.time);
+    }
+    function proposalItemFields(value) {
+      return value is map && value.keys().hasOnly(['title', 'details', 'description', 'category', 'itemType', 'phone', 'email', 'url', 'website', 'address', 'notes', 'openingInformation', 'date', 'startDate', 'startTime', 'endTime', 'location', 'schoolType', 'binType', 'schedule', 'timezone', 'areaLabel', 'enabled', 'customFields', 'order', 'contentVersion', 'schemaVersion']);
+    }
+    function validProposalBase(projectId) {
+      return (request.resource.data.operation == 'create' && request.resource.data.itemId == '' && request.resource.data.currentItem == null && request.resource.data.baseVersion == 0 && proposalItemFields(request.resource.data.proposedItem)) ||
+        (request.resource.data.operation in ['update', 'delete'] && request.resource.data.itemId is string && request.resource.data.itemId.size() > 0 && exists(itemPath(projectId, request.resource.data.listId, request.resource.data.itemId)) && request.resource.data.currentItem == get(itemPath(projectId, request.resource.data.listId, request.resource.data.itemId)).data && request.resource.data.baseVersion == get(itemPath(projectId, request.resource.data.listId, request.resource.data.itemId)).data.get('contentVersion', 0) && (request.resource.data.operation == 'delete' ? request.resource.data.proposedItem == null : proposalItemFields(request.resource.data.proposedItem)));
     }
 
     match /users/{userId} {
@@ -44,7 +54,9 @@ service cloud.firestore {
       allow list: if signedIn() && resource.data.ownerId == request.auth.uid;
       allow create: if permanentUser() && request.resource.data.ownerId == request.auth.uid && safeProjectMode(request.resource.data.projectMode) && request.resource.data.schemaVersion is int;
       allow update: if admin(projectId) && request.resource.data.ownerId == resource.data.ownerId && request.resource.data.projectMode == resource.data.projectMode;
-      allow delete: if owner(projectId);
+      // Owner deletion and ownership transfer require a dedicated trusted lifecycle
+      // operation. They are deliberately unavailable as arbitrary client writes.
+      allow delete: if false;
 
       match /members/{memberId} {
         allow get: if signedIn() && (request.auth.uid == memberId || admin(projectId));
@@ -53,10 +65,10 @@ service cloud.firestore {
           (ownerAfter(projectId) && permanentUser() && request.resource.data.role == 'owner' && request.resource.data.joinedViaInviteId == '') ||
           (request.resource.data.role == 'member' && validInvite(request.resource.data.joinedViaInviteId, projectId))
         );
-        allow update: if request.resource.data.uid == resource.data.uid && (
-          (admin(projectId) && resource.data.role != 'owner' && request.resource.data.status in ['active', 'removed'] && (request.resource.data.role == resource.data.role || owner(projectId))) ||
-          (owner(projectId) && resource.data.role == 'owner' && request.resource.data.role == 'owner' && request.resource.data.status == 'active') ||
-          (signedIn() && request.auth.uid == memberId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'notificationPreferences', 'updatedAt']))
+        allow update: if request.resource.data.uid == resource.data.uid && request.resource.data.joinedAt == resource.data.joinedAt && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'status', 'displayName', 'isAnonymous', 'notificationPreferences', 'joinedViaInviteId', 'consented', 'consentedAt', 'consentVersion', 'updatedAt', 'schemaVersion']) && (
+          (admin(projectId) && resource.data.role != 'owner' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['role', 'status', 'updatedAt']) && request.resource.data.updatedAt == request.time && request.resource.data.status in ['active', 'removed'] && (request.resource.data.role == resource.data.role || owner(projectId))) ||
+          (signedIn() && request.auth.uid == memberId && resource.data.status == 'removed' && resource.data.role == 'member' && request.resource.data.status == 'active' && request.resource.data.role == 'member' && request.resource.data.consented == true && request.resource.data.consentedAt == request.time && request.resource.data.updatedAt == request.time && validInvite(request.resource.data.joinedViaInviteId, projectId) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'displayName', 'isAnonymous', 'joinedViaInviteId', 'consented', 'consentedAt', 'consentVersion', 'updatedAt', 'schemaVersion'])) ||
+          (signedIn() && request.auth.uid == memberId && resource.data.status == 'active' && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'notificationPreferences', 'updatedAt']))
         );
         allow delete: if false;
       }
@@ -80,15 +92,21 @@ service cloud.firestore {
         match /items/{itemId} {
           allow read: if activeMember(projectId);
           allow create, update: if adminAfter(projectId);
-          allow delete: if adminAfter(projectId) || (activeMember(projectId) && resource.data.createdBy == request.auth.uid);
+          allow delete: if adminAfter(projectId);
         }
       }
 
       match /editProposals/{proposalId} {
-        allow create: if activeMember(projectId) && request.resource.data.projectId == projectId && request.resource.data.submittedBy == request.auth.uid && request.resource.data.status == 'pending' && request.resource.data.operation in ['create', 'update', 'delete'];
+        allow create: if activeMember(projectId) && request.resource.data.keys().hasOnly(['projectId', 'listId', 'itemId', 'operation', 'currentItem', 'proposedItem', 'baseVersion', 'reason', 'status', 'submittedBy', 'submittedByName', 'submittedAt', 'schemaVersion']) && request.resource.data.projectId == projectId && request.resource.data.listId is string && request.resource.data.listId.size() > 0 && request.resource.data.submittedBy == request.auth.uid && request.resource.data.submittedByName is string && request.resource.data.submittedByName.size() > 0 && request.resource.data.submittedByName.size() <= 180 && request.resource.data.reason is string && request.resource.data.reason.size() <= 500 && request.resource.data.status == 'pending' && request.resource.data.operation in ['create', 'update', 'delete'] && request.resource.data.submittedAt == request.time && request.resource.data.schemaVersion == 3 && validProposalBase(projectId);
         allow read: if admin(projectId) || (signedIn() && resource.data.submittedBy == request.auth.uid);
-        allow update: if admin(projectId) && resource.data.submittedBy != request.auth.uid && request.resource.data.submittedBy == resource.data.submittedBy && request.resource.data.projectId == resource.data.projectId && request.resource.data.listId == resource.data.listId && request.resource.data.itemId == resource.data.itemId && request.resource.data.operation == resource.data.operation && request.resource.data.proposedItem == resource.data.proposedItem && request.resource.data.currentItem == resource.data.currentItem && request.resource.data.status in ['approved', 'rejected'];
-        allow delete: if owner(projectId);
+        allow update: if admin(projectId) && resource.data.status == 'pending' && resource.data.submittedBy != request.auth.uid && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'reviewedBy', 'reviewedAt', 'reviewNote']) && request.resource.data.status in ['approved', 'rejected'] && request.resource.data.reviewedBy == request.auth.uid && request.resource.data.reviewedAt == request.time && request.resource.data.reviewNote is string && request.resource.data.reviewNote.size() <= 500;
+        allow delete: if false;
+      }
+
+      match /moderationEvents/{eventId} {
+        allow read: if admin(projectId);
+        allow create: if signedIn() && request.resource.data.keys().hasOnly(['action', 'actorUid', 'targetId', 'details', 'schemaVersion', 'createdAt']) && request.resource.data.actorUid == request.auth.uid && request.resource.data.targetId is string && request.resource.data.targetId.size() > 0 && request.resource.data.targetId.size() <= 200 && request.resource.data.details is map && request.resource.data.schemaVersion == 1 && request.resource.data.createdAt == request.time && request.resource.data.action in ['membership-created', 'membership-rejoined', 'member-left', 'member-removed', 'member-role-changed', 'ownership-transferred', 'list-published', 'item-published', 'item-updated', 'item-deleted', 'directory-import-published', 'proposal-approved', 'proposal-rejected', 'invitation-created', 'invitation-revoked'] && (adminAfter(projectId) || (request.resource.data.action in ['membership-created', 'membership-rejoined'] && request.resource.data.targetId == request.auth.uid && activeMemberAfter(projectId)));
+        allow update, delete: if false;
       }
 
       match /invitations/{inviteId} { allow read, create, update: if admin(projectId); allow delete: if owner(projectId); }
@@ -103,13 +121,13 @@ service cloud.firestore {
         allow update, delete: if signedIn() && resource.data.importedBy == request.auth.uid;
       }
       match /networkPeople/{personId} {
-        allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid || (activeMember(projectId) && resource.data.visibility == 'project'));
+        allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid || (activeMember(projectId) && contributionEnabled(projectId, resource.data.ownerUid)));
         allow create: if permanentUser() && activeMemberAfter(projectId) && projectAfter(projectId).projectMode == 'network' && request.resource.data.ownerUid == request.auth.uid && request.resource.data.visibility in ['private', 'project'] && !request.resource.data.keys().hasAny(['email', 'personalNotes', 'privateMetadata']);
         allow update: if signedIn() && resource.data.ownerUid == request.auth.uid && request.resource.data.ownerUid == resource.data.ownerUid && !request.resource.data.keys().hasAny(['email', 'personalNotes', 'privateMetadata']);
         allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
       }
       match /networkEdges/{edgeId} {
-        allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid || (activeMember(projectId) && resource.data.visibility == 'project'));
+        allow read: if signedIn() && (resource.data.ownerUid == request.auth.uid || (activeMember(projectId) && contributionEnabled(projectId, resource.data.ownerUid)));
         allow create: if permanentUser() && activeMemberAfter(projectId) && projectAfter(projectId).projectMode == 'network' && request.resource.data.ownerUid == request.auth.uid && request.resource.data.visibility in ['private', 'project'];
         allow update: if signedIn() && resource.data.ownerUid == request.auth.uid && request.resource.data.ownerUid == resource.data.ownerUid;
         allow delete: if signedIn() && resource.data.ownerUid == request.auth.uid;
@@ -125,33 +143,25 @@ service cloud.firestore {
         allow create, update: if signedIn() && memberId == request.auth.uid && activeMemberAfter(projectId) && request.resource.data.ownerUid == request.auth.uid && request.resource.data.enabled is bool;
         allow delete: if signedIn() && memberId == request.auth.uid;
       }
-      match /whatsappSubscriptions/{memberId} { allow read: if signedIn() && (memberId == request.auth.uid || admin(projectId)); allow write: if false; }
       match /reminders/{reminderId} {
         allow read: if activeMember(projectId);
         allow create, update, delete: if admin(projectId);
-        match /deliveries/{deliveryId} { allow read: if admin(projectId); allow write: if false; }
       }
     }
 
     match /invites/{token} {
       allow get: if true;
       allow list: if false;
-      allow create: if signedIn() && request.resource.data.projectId is string && adminAfter(request.resource.data.projectId) && request.resource.data.status == 'active' && request.resource.data.keys().hasOnly(['projectId', 'projectMode', 'projectName', 'description', 'location', 'previewSections', 'code', 'label', 'status', 'expiresAt', 'createdBy', 'schemaVersion', 'createdAt', 'updatedAt']);
+      allow create: if false;
       allow update: if signedIn() && admin(resource.data.projectId) && request.resource.data.projectId == resource.data.projectId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revokedAt', 'updatedAt']);
       allow delete: if false;
     }
     match /joinCodes/{code} {
-      allow get: if true;
-      allow list: if false;
-      allow create: if signedIn() && request.resource.data.projectId is string && adminAfter(request.resource.data.projectId) && request.resource.data.status == 'active';
+      allow get, list, create: if false;
       allow update: if signedIn() && admin(resource.data.projectId) && request.resource.data.projectId == resource.data.projectId && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'revokedAt', 'updatedAt']);
       allow delete: if false;
     }
 
-    match /whatsappIdentities/{id} { allow read, write: if false; }
-    match /whatsappLinkRequests/{id} { allow read, write: if false; }
-    match /whatsappProcessedMessages/{id} { allow read, write: if false; }
-    match /serverRateLimits/{id} { allow read, write: if false; }
     match /{document=**} { allow read, write: if false; }
   }
 }

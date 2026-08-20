@@ -16,7 +16,7 @@ Instead of presenting relationships as rows in a contact manager, Circa turns th
 
 The result is a human-friendly graph that feels closer to a notebook or personal whiteboard than a CRM, dashboard or traditional social network.
 
-Circa is currently in active development. The core Personal Map experience works locally in the browser without an account or cloud database. Community, Network, account and messaging ideas described later in this document are part of the wider product direction and should not be treated as live integrations unless explicitly marked otherwise.
+Circa is currently in active development. The core Personal Map experience works locally in the browser without an account or cloud database. Community, Network and account routes are cloud Beta experiences and are not approved for unrestricted public use until the documented privacy and production gates are complete.
 
 ---
 
@@ -76,7 +76,7 @@ Personal Maps are local-first. They should remain usable without authentication 
 
 ### Network
 
-Network is the planned professional pathway experience. It is intended to help members understand known connection paths built from real, intentionally contributed edges.
+Network is the cloud Beta professional pathway experience. It helps members understand known connection paths built from real, intentionally contributed edges.
 
 Network is about questions such as:
 
@@ -89,7 +89,7 @@ It is not intended to render thousands of contacts at once or invent links based
 
 ### Community
 
-Community is the planned shared knowledge experience. It is intended for approved local information, directories, events, collections, reminders, member suggestions and optional messaging access.
+Community is the cloud Beta shared knowledge experience. It is intended for approved local information, directories, events, collections, reminders and member suggestions.
 
 Community data must be useful and real. Pending suggestions must not appear as approved information, and opening an invitation must never silently create membership.
 
@@ -611,7 +611,7 @@ Relationship data is personal, so privacy is part of the product model rather th
 - Free-form Compose sends only reduced context to a configured server-side provider.
 - Circa does not make unsupported encryption claims.
 
-### Planned shared experiences
+### Cloud Beta experiences
 
 - Community membership requires explicit consent.
 - Opening an invitation does not silently join or authenticate a visitor.
@@ -646,36 +646,6 @@ Members can submit proposals, but a proposal remains pending until an authorised
 Community timezone is the source of truth for event and reminder calculations. Recurring schedules must handle weekly, fortnightly and monthly behaviour without drifting because of browser timezone or daylight-saving changes.
 
 The Community dashboard should prioritise useful information rather than generic analytics: the next collection, local information, upcoming events, reminders, Ask and recent approved updates.
-
----
-
-## Optional WhatsApp direction
-
-WhatsApp is a planned optional extension of Community, not a requirement for Community to function.
-
-The intended first version uses a one-to-one Circa assistant through the official Meta WhatsApp Cloud API. It does not read existing group chats, automate a personal account or scrape WhatsApp Web.
-
-The proposed linking flow is:
-
-```text
-Member chooses Connect
-    ↓
-Circa creates a short-lived, single-use token
-    ↓
-The member sends JOIN plus the token to Circa
-    ↓
-The server verifies the sender, token, user and Community
-    ↓
-The verified identity is linked
-```
-
-Connection consent and notification consent remain separate. A typed phone number alone is not proof of ownership.
-
-Members should be able to control question access and reminder categories independently, disconnect one Community without breaking others, and use STOP to opt out.
-
-Answers and reminders must use the correct Community and approved data only. Raw identifiers remain server-protected and only a masked number may appear in the client.
-
-Webhook signatures, token expiry, token reuse and duplicate webhook deliveries must all be validated safely.
 
 ---
 
@@ -828,7 +798,7 @@ Circa's highest-risk behaviour lives in graph correctness, storage, permissions 
 - account return context when introduced;
 - Community suggestion lifecycle;
 - Network privacy and contribution;
-- WhatsApp routing with external boundaries mocked.
+- Community reminder display and recurrence calculations.
 
 ### Browser journeys
 
@@ -880,7 +850,6 @@ The wider product requirements describe future or partially prepared work includ
 - secure Community invitations and role-based access;
 - approved directories, events, collections and reminders;
 - member suggestion and moderation flows;
-- optional one-to-one WhatsApp access;
 - private LinkedIn export import;
 - explicit professional Network contribution;
 - multi-user deterministic pathway finding;
@@ -898,7 +867,6 @@ The following are intentionally excluded from the current product boundary:
 - popularity metrics and leaderboards;
 - automatic relationship advice;
 - LinkedIn scraping or invented API access;
-- unofficial WhatsApp Web automation;
 - LLM-computed graph paths;
 - fake profile analysis;
 - silent identity merging;

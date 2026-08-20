@@ -1,6 +1,6 @@
 # Circa cloud setup
 
-Circa remains local-first for ordinary maps. Firebase adds optional accounts, cloud migration, private Networks, Community membership, approved Community information, proposals and invitations. Netlify remains the intended public frontend and trusted function host.
+Circa remains local-first for ordinary maps. Firebase adds accounts for private Networks, Community membership, approved Community information, proposals and invitations. Netlify remains the intended public frontend and trusted function host.
 
 ## Firebase project
 
@@ -32,39 +32,11 @@ Run the database-level rules suite with:
 npm run test:firestore
 ```
 
-The rules enforce member proposals, admin publication/review, cross-Community isolation, private Network ownership, explicit project-visible Network contributions, exact public invite/code reads without public listing, and complete client denial for server-owned WhatsApp collections.
+The rules enforce member proposals, admin publication/review, cross-Community isolation, private Network ownership, explicit project-visible Network contributions, exact public invite/code reads without public listing, and complete client denial for server-owned rate-limit records.
 
 ## Existing local data
 
-`circa_workspace_v3` remains the working local source for existing map projects. On a permanent account, `/auth` offers an explicit copy to cloud. Before copying, Circa retains a local backup. The migration uses a per-user `localWorkspaceV3` marker, is safe to retry, verifies the completion marker, and never deletes the local workspace.
-
-## Netlify environment variables
-
-Copy the names from `.env.example` into Netlify. Firebase client configuration and the App Check site key are public web configuration. The following are private server values and must never use a `NEXT_PUBLIC_` prefix:
-
-- `FIREBASE_ADMIN_PROJECT_ID`
-- `FIREBASE_ADMIN_CLIENT_EMAIL`
-- `FIREBASE_ADMIN_PRIVATE_KEY`
-- `META_WHATSAPP_ACCESS_TOKEN`
-- `META_WHATSAPP_PHONE_NUMBER_ID`
-- `META_WHATSAPP_BUSINESS_ACCOUNT_ID`
-- `META_APP_SECRET`
-- `META_WEBHOOK_VERIFY_TOKEN`
-- `META_GRAPH_API_VERSION`
-- `CIRCA_WHATSAPP_NUMBER`
-- `CIRCA_PUBLIC_URL` (set to `https://circaa.netlify.app`)
-
-When WhatsApp variables are absent, the Community UI shows an unavailable state and the rest of Circa continues normally.
-
-## Meta webhook
-
-After the Netlify variables are present, configure Meta's WhatsApp Cloud API webhook as:
-
-```text
-https://circaa.netlify.app/.netlify/functions/whatsapp-webhook
-```
-
-Use the exact value configured as `META_WEBHOOK_VERIFY_TOKEN`. POST bodies are verified with `X-Hub-Signature-256` against `META_APP_SECRET` before parsing. The scheduled reminder function is declared for every 15 minutes and deduplicates each recipient/occurrence before sending.
+`circa_workspace_v3` remains the working source for Personal projects. The first public release does not copy Personal workspaces to Firebase: the incomplete cloud-copy UI and implementation were removed under P0.4. Users keep portability through the local JSON export, restore, retained migration backup and restore recovery copy.
 
 ## Netlify routing
 

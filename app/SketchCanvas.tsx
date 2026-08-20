@@ -29,8 +29,9 @@ import {
   RelationshipType,
   Workspace,
   getTabSessionId,
+  mergeProjectGraph,
   relationshipLabels,
-  parseWorkspaceBackup,
+  readWorkspaceBackupFile,
   serializeWorkspace,
 } from "./graphStore";
 import ComposePanel from "./ComposePanel";
@@ -338,6 +339,15 @@ function BackupRestoreDialog({ current, backup, busy, onClose, onConfirm }: { cu
   </div></div>;
 }
 
+function SaveRecoveryDialog({ message, destination, busy, onStay, onExport, onRetry }: { message: string; destination: string; busy: boolean; onStay: () => void; onExport: () => void; onRetry: () => void }) {
+  const dialogRef = useModalFocus<HTMLDivElement>(onStay);
+  return <div className="popover-backdrop"><div ref={dialogRef} tabIndex={-1} className="add-popover confirm-popover save-recovery-popover" role="dialog" aria-modal="true" aria-labelledby="save-recovery-title">
+    <span className="form-kicker">Save required</span><h2 id="save-recovery-title">Circa kept you on this Project.</h2>
+    <p>{message}</p><p>Your unsaved edits are still on this screen. Stay here, export them as a recovery backup, or retry saving before {destination}.</p>
+    <div className="save-recovery-actions"><button className="button button-paper" disabled={busy} onClick={onStay}>Stay here</button><button className="button button-paper" disabled={busy} onClick={onExport}>Export recovery backup</button><button className="button button-dark" disabled={busy} onClick={onRetry}>{busy ? "Retrying..." : `Retry and ${destination}`}</button></div>
+  </div></div>;
+}
+
 function RelationshipChooser({ people, sourceId, targetId, options, customLabels, onAddCustom, onChoose, onCancel }: { people: Person[]; sourceId: string; targetId: string; options: RelationshipOption[]; customLabels: string[]; onAddCustom: (label: string) => void; onChoose: (type: RelationshipType, labels: string[], introducedBy: string, strength: RelationshipStrength, direction: RelationshipDirection) => void; onCancel: () => void }) {
   const [introducedBy, setIntroducedBy] = useState("");
   const [custom, setCustom] = useState("");
@@ -547,6 +557,9 @@ export default function SketchCanvas({ project, projects, onOpenProject, onNewPr
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [projectConflict, setProjectConflict] = useState(false);
   const [overwriteConflict, setOverwriteConflict] = useState(false);
+  const [saveFailure, setSaveFailure] = useState("");
+  const [pendingNavigation, setPendingNavigation] = useState<{ destination: string; run: () => void } | null>(null);
+  const [saveRetryBusy, setSaveRetryBusy] = useState(false);
   const canvasRef = useRef<HTMLElement>(null);
   const backupInputRef = useRef<HTMLInputElement>(null);
   const graphRef = useRef(graph);
@@ -615,16 +628,22 @@ export default function SketchCanvas({ project, projects, onOpenProject, onNewPr
   }, [store]);
 
   const performSave = useCallback((next: Graph, generation = saveGenerationRef.current) => {
-    if (saveSuspendedRef.current) return Promise.resolve();
+    if (saveSuspendedRef.current) return Promise.reject(new Error("Saving is paused until you resolve the newer version from another tab."));
     setSaveStatus("saving");
-    saveSequenceRef.current = saveSequenceRef.current.catch(() => undefined).then(() => store.saveGraph(next)).then(() => { if (generation === saveGenerationRef.current) setSaveStatus("saved"); }).catch((error) => { const message = error instanceof Error ? error.message : "Circa could not save this change."; setSaveStatus("error"); if (message.includes("changed in another tab")) { saveSuspendedRef.current = true; setProjectConflict(true); } else setToast(`${message} Export a backup before continuing if this persists.`); });
+    saveSequenceRef.current = saveSequenceRef.current.catch(() => undefined).then(() => store.saveGraph(next)).then(() => { if (generation === saveGenerationRef.current) setSaveStatus("saved"); setSaveFailure(""); }).catch((error) => {
+      const message = error instanceof Error ? error.message : "Circa could not save this change.";
+      setSaveStatus("error"); setSaveFailure(message);
+      if (message.includes("changed in another tab")) { saveSuspendedRef.current = true; setProjectConflict(true); }
+      else setToast(`${message} Export a backup before continuing if this persists.`);
+      throw error;
+    });
     return saveSequenceRef.current;
   }, [store]);
 
   const flushPendingSave = useCallback(async () => {
     if (!loadedRef.current) return;
     if (saveTimerRef.current !== null) { window.clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
-    await performSave(graphRef.current).catch(() => undefined);
+    await performSave(graphRef.current);
   }, [performSave]);
 
   useEffect(() => {
@@ -632,7 +651,7 @@ export default function SketchCanvas({ project, projects, onOpenProject, onNewPr
     const generation = ++saveGenerationRef.current;
     const statusTimer = window.setTimeout(() => setSaveStatus("saving"), 0);
     if (saveTimerRef.current !== null) window.clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = window.setTimeout(() => { saveTimerRef.current = null; void performSave(graphRef.current, generation); }, 420);
+    saveTimerRef.current = window.setTimeout(() => { saveTimerRef.current = null; void performSave(graphRef.current, generation).catch(() => undefined); }, 420);
     return () => { window.clearTimeout(statusTimer); if (saveTimerRef.current !== null) { window.clearTimeout(saveTimerRef.current); saveTimerRef.current = null; } };
   }, [graph, loaded, performSave]);
 
@@ -683,24 +702,34 @@ export default function SketchCanvas({ project, projects, onOpenProject, onNewPr
     if (snapshot && snapshot.updatedAt !== graphRef.current.updatedAt) { setPast((items) => [...items.slice(-29), snapshot]); setFuture([]); }
   }
 
-  async function leaveCanvas() { await flushPendingSave(); onExit(); }
-  async function openProject(id: string) { await flushPendingSave(); onOpenProject(id); }
-  async function newProject() { await flushPendingSave(); onNewProject(); }
+  async function navigateAfterSave(destination: string, run: () => void) {
+    try { await flushPendingSave(); setPendingNavigation(null); setSaveFailure(""); run(); }
+    catch (error) { setSaveFailure(error instanceof Error ? error.message : "Circa could not save this change."); setPendingNavigation({ destination, run }); }
+  }
+
+  async function leaveCanvas() { await navigateAfterSave("returning to Projects", onExit); }
+  async function openProject(id: string) { await navigateAfterSave("opening the other Project", () => onOpenProject(id)); }
+  async function newProject() { await navigateAfterSave("creating a new Project", onNewProject); }
+
+  async function downloadCurrentWorkspaceBackup() {
+    const workspace = await workspaceStore.loadWorkspace();
+    const recovery = mergeProjectGraph(workspace, project.id, graphRef.current);
+    const blob = new Blob([serializeWorkspace(recovery)], { type: "application/json" });
+    const url = URL.createObjectURL(blob); const link = document.createElement("a");
+    link.href = url; link.download = `circa-recovery-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url);
+  }
 
   async function exportBackup() {
-    await flushPendingSave();
     try {
-      const workspace = await workspaceStore.loadWorkspace();
-      const blob = new Blob([serializeWorkspace(workspace)], { type: "application/json" });
-      const url = URL.createObjectURL(blob); const link = document.createElement("a");
-      link.href = url; link.download = `circa-backup-${new Date().toISOString().slice(0, 10)}.json`; link.click(); URL.revokeObjectURL(url);
+      try { await flushPendingSave(); } catch { /* include the in-memory graph in the recovery export */ }
+      await downloadCurrentWorkspaceBackup();
       setMoreMenuOpen(false); setToast("Workspace backup exported");
     } catch (error) { setSaveStatus("error"); setToast(error instanceof Error ? error.message : "Backup export failed."); }
   }
 
   async function importBackup(file: File) {
     try {
-      const imported = parseWorkspaceBackup(await file.text());
+      const imported = await readWorkspaceBackupFile(file);
       const current = await workspaceStore.loadWorkspace();
       setPendingRestore(imported); setRestoreCurrent(current); setMoreMenuOpen(false);
     } catch (error) { setToast(error instanceof Error ? error.message : "That backup could not be restored."); }
@@ -980,7 +1009,7 @@ export default function SketchCanvas({ project, projects, onOpenProject, onNewPr
     const now = new Date().toISOString();
     const existing = graph.relationships.find((item) => (item.sourceId === sourceId && item.targetId === targetId) || (item.sourceId === targetId && item.targetId === sourceId));
     const label = labels[0] ?? relationshipLabels[type];
-    const relationship: Relationship = existing ? { ...existing, type, label, labels: [...new Set([...existing.labels, ...labels])], semantic: label, strength, direction, introducedByPersonId, updatedAt: now } : { id: createId("relationship"), sourceId, targetId, ...relationshipFields(type, label), labels, strength, direction, introducedByPersonId, createdAt: now, updatedAt: now };
+    const relationship: Relationship = existing ? { ...existing, sourceId, targetId, type, label, labels: [...new Set([...existing.labels, ...labels])], semantic: label, strength, direction, introducedByPersonId, updatedAt: now } : { id: createId("relationship"), sourceId, targetId, ...relationshipFields(type, label), labels, strength, direction, introducedByPersonId, createdAt: now, updatedAt: now };
     commitGraph({ ...graph, relationships: existing ? graph.relationships.map((item) => item.id === existing.id ? relationship : item) : [...graph.relationships, relationship] });
     setPendingConnection(null); setConnectStart(""); setTool("select"); setSelection({ kind: "relationship", id: relationship.id }); setToast("Thread drawn");
   }
@@ -1186,7 +1215,7 @@ export default function SketchCanvas({ project, projects, onOpenProject, onNewPr
   function deleteNow(target: Selection = deleteSelection) {
     if (!target) return;
     let next = graph;
-    if (target.kind === "person") next = { ...graph, people: graph.people.filter((item) => item.id !== target.id).map((item) => item.reportsToPersonId === target.id ? { ...item, reportsToPersonId: "" } : item), relationships: graph.relationships.filter((item) => item.sourceId !== target.id && item.targetId !== target.id && item.introducedByPersonId !== target.id) };
+    if (target.kind === "person") next = { ...graph, people: graph.people.filter((item) => item.id !== target.id).map((item) => item.reportsToPersonId === target.id ? { ...item, reportsToPersonId: "" } : item), relationships: graph.relationships.filter((item) => item.sourceId !== target.id && item.targetId !== target.id).map((item) => item.introducedByPersonId === target.id ? { ...item, introducedByPersonId: "", updatedAt: new Date().toISOString() } : item) };
     if (target.kind === "relationship") next = { ...graph, relationships: graph.relationships.filter((item) => item.id !== target.id) };
     if (target.kind === "note") next = { ...graph, notes: graph.notes.filter((item) => item.id !== target.id) };
     if (target.kind === "group") next = { ...graph, groups: graph.groups.filter((item) => item.id !== target.id), people: graph.people.map((person) => { const groupIds = person.groupIds.filter((id) => id !== target.id); return groupIds.length === person.groupIds.length ? person : { ...person, groupIds, groupId: groupIds[0] ?? "" }; }) };
@@ -1393,8 +1422,9 @@ export default function SketchCanvas({ project, projects, onOpenProject, onNewPr
       {voiceOpen && <VoicePanel state={voiceState} draft={voiceDraft} message={voiceMessage} category={project.category} relationshipOptions={relationshipOptions} onDraftChange={setVoiceDraft} onRetry={beginVoice} onFinish={finishVoiceCapture} onUsePhrase={finishVoiceCapture} onClose={closeVoice} />}
       {composeOpen && <ComposePanel project={project} graph={graph} globalPeople={existingPeople} selectedPerson={selection?.kind === "person" ? graph.people.find((person) => person.id === selection.id) : undefined} onClose={() => { setComposeOpen(false); setComposeDraft(null); setTool("select"); }} onPreview={setComposeDraft} onApply={applyComposeDraft} onAsk={askCompose} />}
       {pendingRestore && restoreCurrent && <BackupRestoreDialog current={restoreCurrent} backup={pendingRestore} busy={restoreBusy} onClose={() => { if (!restoreBusy) { setPendingRestore(null); setRestoreCurrent(null); } }} onConfirm={() => void confirmRestore()} />}
-      {projectConflict && <div className="conflict-banner" role="alert"><div><strong>This Project changed in another tab.</strong><span>Automatic saving is paused so Circa will not silently overwrite the newer version.</span></div><button className="button button-paper" onClick={() => void reloadNewerProject()}>Reload newer version</button><button className="button button-dark" onClick={() => setOverwriteConflict(true)}>Keep this version</button></div>}
-      {overwriteConflict && <ConfirmDialog title="Replace the newer Project?" copy="Keeping this version will intentionally replace the newer edits saved in the other tab." action="Replace newer Project" onClose={() => setOverwriteConflict(false)} onConfirm={() => void keepThisProjectVersion()} />}
+      {pendingNavigation && <SaveRecoveryDialog message={saveFailure || "Circa could not save this change."} destination={pendingNavigation.destination} busy={saveRetryBusy} onStay={() => setPendingNavigation(null)} onExport={() => void downloadCurrentWorkspaceBackup().then(() => setToast("Recovery backup exported")).catch((error) => setToast(error instanceof Error ? error.message : "Backup export failed."))} onRetry={() => { setSaveRetryBusy(true); void flushPendingSave().then(() => { const run = pendingNavigation.run; setPendingNavigation(null); setSaveFailure(""); run(); }).catch((error) => setSaveFailure(error instanceof Error ? error.message : "Circa could not save this change.")).finally(() => setSaveRetryBusy(false)); }} />}
+      {projectConflict && <div className="conflict-banner" role="alert"><div><strong>This Project changed in another tab.</strong><span>Choose explicitly: discard this tab’s edits, or overwrite the newer saved version.</span></div><button className="button button-paper" onClick={() => void reloadNewerProject()}>Discard this tab and load newer</button><button className="button button-dark" onClick={() => setOverwriteConflict(true)}>Overwrite newer with this tab</button></div>}
+      {overwriteConflict && <ConfirmDialog title="Overwrite the newer Project?" copy="This intentionally replaces the newer edits saved in the other tab with the version currently on this screen." action="Overwrite newer Project" onClose={() => setOverwriteConflict(false)} onConfirm={() => void keepThisProjectVersion()} />}
     </main>
   );
 }

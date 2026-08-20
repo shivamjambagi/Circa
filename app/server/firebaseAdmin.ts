@@ -7,22 +7,97 @@ import type { Firestore } from "firebase-admin/firestore";
 
 type VerifiedRequest = { uid: string; token: DecodedIdToken };
 
+type FirebaseAdminDiagnosticPhase = "initialization" | "id_token_verification";
+type FirebaseAdminDiagnosticCategory =
+  | "admin_app_reused"
+  | "admin_initialization_succeeded"
+  | "admin_sdk_load_failed"
+  | "project_id_missing"
+  | "service_account_json_invalid"
+  | "credential_initialization_failed"
+  | "admin_app_initialization_failed"
+  | "admin_auth_unavailable"
+  | "id_token_expired"
+  | "id_token_revoked"
+  | "id_token_invalid"
+  | "id_token_verification_failed";
+
+let serviceAccountJsonParsedSuccessfully: boolean | null = null;
+
+function safeFirebaseErrorCode(error: unknown) {
+  const code = error && typeof error === "object" && "code" in error ? (error as { code?: unknown }).code : undefined;
+  return typeof code === "string" && /^(?:app|auth|firestore)\/[a-z0-9-]{1,80}$/.test(code) ? code : "unavailable";
+}
+
+function safeFirebaseErrorName(error: unknown) {
+  const name = error && typeof error === "object" && "name" in error ? (error as { name?: unknown }).name : undefined;
+  return typeof name === "string" && ["Error", "FirebaseAppError", "FirebaseAuthError", "FirebaseError", "SyntaxError", "TypeError"].includes(name) ? name : "unavailable";
+}
+
+function verificationDiagnosticCategory(error: unknown): FirebaseAdminDiagnosticCategory {
+  const code = safeFirebaseErrorCode(error);
+  if (code === "auth/id-token-expired") return "id_token_expired";
+  if (code === "auth/id-token-revoked") return "id_token_revoked";
+  if (["auth/argument-error", "auth/invalid-argument", "auth/invalid-id-token"].includes(code)) return "id_token_invalid";
+  return "id_token_verification_failed";
+}
+
+export function reportFirebaseAdminDiagnostic(phase: FirebaseAdminDiagnosticPhase, category: FirebaseAdminDiagnosticCategory, error?: unknown, level: "error" | "info" = "error") {
+  if (process.env.NODE_ENV !== "production") return;
+  const diagnostic = JSON.stringify({
+    event: "circa_firebase_admin_diagnostic",
+    phase,
+    category,
+    firebaseProjectIdPresent: Boolean(process.env.FIREBASE_PROJECT_ID?.trim()),
+    firebaseServiceAccountJsonPresent: Boolean(process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim()),
+    serviceAccountJsonParsedSuccessfully,
+    firebaseErrorCode: safeFirebaseErrorCode(error),
+    firebaseErrorName: safeFirebaseErrorName(error),
+  });
+  if (level === "info") console.info(diagnostic);
+  else console.error(diagnostic);
+}
+
 let appPromise: Promise<App> | undefined;
 async function adminApp(): Promise<App> {
   if (appPromise) return appPromise;
   appPromise = (async () => {
-    // These remain native Node imports in the Netlify function. Inlining the
-    // Admin SDK into the Fetch-worker ESM bundle breaks its CommonJS paths.
-    const sdk = await import(/* @vite-ignore */ "firebase-admin/app");
-    const existing = sdk.getApps()[0];
-    if (existing) return existing;
-    const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || (process.env.FIRESTORE_EMULATOR_HOST ? "circa-rules-test" : "");
-    if (!projectId) throw new Error("FIREBASE_PROJECT_ID is required for Circa server routes.");
-    const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
-    let credential;
-    try { credential = raw ? sdk.cert(JSON.parse(raw)) : sdk.applicationDefault(); }
-    catch { throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON."); }
-    return sdk.initializeApp({ credential, projectId });
+    let category: FirebaseAdminDiagnosticCategory = "admin_sdk_load_failed";
+    try {
+      // These remain native Node imports in the Netlify function. Inlining the
+      // Admin SDK into the Fetch-worker ESM bundle breaks its CommonJS paths.
+      const sdk = await import(/* @vite-ignore */ "firebase-admin/app");
+      const existing = sdk.getApps()[0];
+      if (existing) {
+        reportFirebaseAdminDiagnostic("initialization", "admin_app_reused", undefined, "info");
+        return existing;
+      }
+      category = "project_id_missing";
+      const projectId = process.env.FIREBASE_PROJECT_ID || process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || (process.env.FIRESTORE_EMULATOR_HOST ? "circa-rules-test" : "");
+      if (!projectId) throw new Error("FIREBASE_PROJECT_ID is required for Circa server routes.");
+      const raw = process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim();
+      let credential;
+      if (raw) {
+        category = "service_account_json_invalid";
+        serviceAccountJsonParsedSuccessfully = false;
+        const parsed = JSON.parse(raw) as Parameters<typeof sdk.cert>[0];
+        serviceAccountJsonParsedSuccessfully = true;
+        category = "credential_initialization_failed";
+        credential = sdk.cert(parsed);
+      } else {
+        serviceAccountJsonParsedSuccessfully = null;
+        category = "credential_initialization_failed";
+        credential = sdk.applicationDefault();
+      }
+      category = "admin_app_initialization_failed";
+      const app = sdk.initializeApp({ credential, projectId });
+      reportFirebaseAdminDiagnostic("initialization", "admin_initialization_succeeded", undefined, "info");
+      return app;
+    } catch (error) {
+      reportFirebaseAdminDiagnostic("initialization", category, error);
+      if (category === "service_account_json_invalid") throw new Error("FIREBASE_SERVICE_ACCOUNT_JSON is not valid JSON.");
+      throw error;
+    }
   })();
   return appPromise;
 }
@@ -36,9 +111,12 @@ export async function verifyPermanentFirebaseRequest(request: Request, requireAp
   const authorization = request.headers.get("authorization") || "";
   const match = authorization.match(/^Bearer\s+(.+)$/i);
   if (!match) throw new Error("AUTH_REQUIRED");
+  let auth: Auth;
+  try { auth = await getAdminAuth(); }
+  catch (error) { reportFirebaseAdminDiagnostic("id_token_verification", "admin_auth_unavailable", error); throw new Error("AUTH_REQUIRED"); }
   let token: DecodedIdToken;
-  try { token = await (await getAdminAuth()).verifyIdToken(match[1], true); }
-  catch { throw new Error("AUTH_REQUIRED"); }
+  try { token = await auth.verifyIdToken(match[1], true); }
+  catch (error) { reportFirebaseAdminDiagnostic("id_token_verification", verificationDiagnosticCategory(error), error); throw new Error("AUTH_REQUIRED"); }
   if (token.firebase?.sign_in_provider === "anonymous") throw new Error("PERMANENT_ACCOUNT_REQUIRED");
   const appCheckToken = request.headers.get("x-firebase-appcheck");
   if (requireAppCheck && !appCheckToken) throw new Error("APP_CHECK_REQUIRED");

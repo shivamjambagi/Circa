@@ -4,10 +4,44 @@ import test from "node:test";
 
 const read = (path) => fs.readFileSync(path, "utf8");
 
+function extractCsp(source, pattern, label) {
+  const match = source.match(pattern);
+  assert.ok(match, `${label} must define a Content-Security-Policy header.`);
+  return match[1];
+}
+
+function cspDirectives(policy) {
+  return new Map(policy.split(";").map((directive) => directive.trim()).filter(Boolean).map((directive) => {
+    const [name, ...values] = directive.split(/\s+/);
+    return [name, values];
+  }));
+}
+
 test("production headers cover the required browser boundaries", () => {
   const netlify = read("netlify.toml"); const next = read("next.config.ts");
   for (const pattern of [/Content-Security-Policy/, /Strict-Transport-Security/, /X-Content-Type-Options/, /frame-ancestors 'none'/, /Referrer-Policy/, /Permissions-Policy/]) assert.match(netlify, pattern);
   assert.match(next, /firebaseappcheck\.googleapis\.com/); assert.match(next, /frame-ancestors 'none'/);
+});
+
+test("Firebase Google sign-in CSP is exact and consistent across both header sources", () => {
+  const netlifyCsp = extractCsp(read("netlify.toml"), /Content-Security-Policy\s*=\s*"([^"]+)"/, "Netlify");
+  const nextCsp = extractCsp(read("next.config.ts"), /key:\s*"Content-Security-Policy",\s*value:\s*"([^"]+)"/, "Next.js");
+  assert.equal(nextCsp, netlifyCsp, "Netlify and the production worker must enforce the same CSP.");
+
+  const directives = cspDirectives(netlifyCsp);
+  assert.ok(directives.get("script-src")?.includes("https://apis.google.com"), "Firebase Auth must be able to load its GAPI script.");
+  assert.ok(directives.get("frame-src")?.includes("https://circa-4bea4.firebaseapp.com"), "Firebase Auth must be able to load Circa's hidden auth iframe.");
+  assert.ok(directives.get("connect-src")?.includes("https://*.googleapis.com"), "Firebase API connections must remain scoped to Google APIs.");
+  assert.ok(directives.get("connect-src")?.includes("https://securetoken.googleapis.com"));
+  assert.ok(directives.get("connect-src")?.includes("https://identitytoolkit.googleapis.com"));
+  assert.ok(directives.get("connect-src")?.includes("https://firebaseappcheck.googleapis.com"));
+  assert.ok(directives.get("frame-ancestors")?.includes("'none'"));
+  assert.ok(directives.get("object-src")?.includes("'none'"));
+  assert.ok(!netlifyCsp.includes("'unsafe-eval'"));
+  for (const values of directives.values()) {
+    assert.ok(!values.includes("*"));
+    assert.ok(!values.includes("https://*"));
+  }
 });
 
 test("cloud failure, offline and application boundaries are explicit", () => {

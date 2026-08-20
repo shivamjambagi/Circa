@@ -41,5 +41,11 @@ test("cloud entry routes render through the production worker", async () => {
     const response = await worker.fetch(new Request(`http://localhost${path}`, { headers: { accept: "text/html" } }), env, context);
     assert.equal(response.status, 200, path);
     assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i, path);
+    if (path === "/auth") {
+      const csp = response.headers.get("content-security-policy") ?? "";
+      assert.match(csp, /script-src[^;]*https:\/\/apis\.google\.com(?:\s|;)/);
+      assert.match(csp, /frame-src[^;]*https:\/\/circa-4bea4\.firebaseapp\.com(?:\s|;)/);
+      assert.doesNotMatch(csp, /'unsafe-eval'|(?:^|\s)https:\/\/\*(?:\s|;)/);
+    }
   }
 });

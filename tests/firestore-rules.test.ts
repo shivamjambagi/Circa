@@ -62,11 +62,11 @@ describe("Community database permissions", () => {
     await assertFails(deleteDoc(doc(db, "projects", projectId, "lists", "notices", "items", "approved")));
   });
 
-  it("lets the owner publish while server-only integration records stay denied", async () => {
+  it("lets the owner publish while unknown server-only records stay denied", async () => {
     const db = auth(ownerId);
     await assertSucceeds(setDoc(doc(db, "projects", projectId, "lists", "notices", "items", "owner-item"), { title: "Published by owner", order: 3, schemaVersion: 1 }));
-    await assertFails(getDoc(doc(db, "whatsappIdentities", "phonehash")));
-    await assertFails(setDoc(doc(db, "whatsappLinkRequests", "request"), { uid: ownerId }));
+    await assertFails(getDoc(doc(db, "serverOnlyRecords", "owner-bucket")));
+    await assertFails(setDoc(doc(db, "serverOnlyRecords", "owner-bucket"), { count: 1 }));
   });
 
   it("protects owner role and immutable membership provenance", async () => {
@@ -78,9 +78,14 @@ describe("Community database permissions", () => {
 
 describe("Network privacy rules", () => {
   it("allows the owner to read private imports", async () => { await assertSucceeds(getDoc(doc(auth(ownerId), "projects", "network", "networkPeople", "private"))); });
-  it("blocks another member from private imports but permits explicitly shared records", async () => {
-    await assertFails(getDoc(doc(auth(memberId), "projects", "network", "networkPeople", "private")));
-    await assertSucceeds(getDoc(doc(auth(memberId), "projects", "network", "networkPeople", "shared")));
+  it("blocks another member until the owner explicitly enables their contribution", async () => {
+    const privateRecord = doc(auth(memberId), "projects", "network", "networkPeople", "private");
+    const sharedRecord = doc(auth(memberId), "projects", "network", "networkPeople", "shared");
+    await assertFails(getDoc(privateRecord));
+    await assertFails(getDoc(sharedRecord));
+    await assertSucceeds(setDoc(doc(auth(ownerId), "projects", "network", "networkContributions", ownerId), { ownerUid: ownerId, enabled: true, consentVersion: 1, updatedAt: serverTimestamp() }));
+    await assertSucceeds(getDoc(privateRecord));
+    await assertSucceeds(getDoc(sharedRecord));
   });
   it("prevents one member from changing another member's contribution", async () => {
     await assertFails(setDoc(doc(auth(memberId), "projects", "network", "networkContributions", ownerId), { ownerUid: memberId, enabled: true, visibility: "project" }));

@@ -121,7 +121,7 @@ export default function DirectoryImportTool({
         />
         <div>
           <strong>{fileName || "Choose private directory JSON"}</strong>
-          <small>No raw WhatsApp export is uploaded by this tool.</small>
+          <small>The selected file is parsed locally before you review and import it.</small>
         </div>
       </div>
 

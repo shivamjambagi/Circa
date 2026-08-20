@@ -57,20 +57,6 @@
       ]
     },
     {
-      "collectionGroup": "reminders",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        {
-          "fieldPath": "enabled",
-          "order": "ASCENDING"
-        },
-        {
-          "fieldPath": "nextRunAt",
-          "order": "ASCENDING"
-        }
-      ]
-    },
-    {
       "collectionGroup": "networkPeople",
       "queryScope": "COLLECTION",
       "fields": [

@@ -649,36 +649,6 @@ The Community dashboard should prioritise useful information rather than generic
 
 ---
 
-## Optional WhatsApp direction
-
-WhatsApp is a planned optional extension of Community, not a requirement for Community to function.
-
-The intended first version uses a one-to-one Circa assistant through the official Meta WhatsApp Cloud API. It does not read existing group chats, automate a personal account or scrape WhatsApp Web.
-
-The proposed linking flow is:
-
-```text
-Member chooses Connect
-    ↓
-Circa creates a short-lived, single-use token
-    ↓
-The member sends JOIN plus the token to Circa
-    ↓
-The server verifies the sender, token, user and Community
-    ↓
-The verified identity is linked
-```
-
-Connection consent and notification consent remain separate. A typed phone number alone is not proof of ownership.
-
-Members should be able to control question access and reminder categories independently, disconnect one Community without breaking others, and use STOP to opt out.
-
-Answers and reminders must use the correct Community and approved data only. Raw identifiers remain server-protected and only a masked number may appear in the client.
-
-Webhook signatures, token expiry, token reuse and duplicate webhook deliveries must all be validated safely.
-
----
-
 ## Professional Network direction
 
 Network is designed for understanding professional pathways without turning Circa into a contact spreadsheet.
@@ -828,7 +798,7 @@ Circa's highest-risk behaviour lives in graph correctness, storage, permissions 
 - account return context when introduced;
 - Community suggestion lifecycle;
 - Network privacy and contribution;
-- WhatsApp routing with external boundaries mocked.
+- Community reminder display and recurrence calculations.
 
 ### Browser journeys
 
@@ -880,7 +850,6 @@ The wider product requirements describe future or partially prepared work includ
 - secure Community invitations and role-based access;
 - approved directories, events, collections and reminders;
 - member suggestion and moderation flows;
-- optional one-to-one WhatsApp access;
 - private LinkedIn export import;
 - explicit professional Network contribution;
 - multi-user deterministic pathway finding;
@@ -898,7 +867,6 @@ The following are intentionally excluded from the current product boundary:
 - popularity metrics and leaderboards;
 - automatic relationship advice;
 - LinkedIn scraping or invented API access;
-- unofficial WhatsApp Web automation;
 - LLM-computed graph paths;
 - fake profile analysis;
 - silent identity merging;

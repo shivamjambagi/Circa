@@ -29,9 +29,6 @@ export type CommunityMember = {
   consentedAt?: unknown;
   consentVersion?: number;
   joinedAt?: unknown;
-  whatsappConnected?: boolean;
-  maskedPhone?: string;
-  reminderOptIn?: boolean;
   contributionEnabled?: boolean;
 };
 
@@ -126,12 +123,4 @@ export type PublicInvite = {
   createdAt?: unknown;
   revokedAt?: unknown;
   schemaVersion: number;
-};
-
-export type WhatsAppIntegration = {
-  available: boolean;
-  connected: boolean;
-  maskedPhone?: string;
-  questionOptIn: boolean;
-  reminderCategories: string[];
 };

@@ -28,7 +28,6 @@ test("Community member navigation is deliberately small and role-aware", async (
   assert.match(source, /\["events", "Events"\]/);
   assert.match(source, /canReview \? \[\["manage"/);
   assert.doesNotMatch(source, /\["ask", "Ask"\]/);
-  assert.doesNotMatch(source, /\["whatsapp", "WhatsApp"\]/);
   assert.doesNotMatch(source, /\["suggestions", "Suggestions"\]/);
 });
 

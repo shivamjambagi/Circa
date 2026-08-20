@@ -127,11 +127,9 @@ service cloud.firestore {
         allow create, update: if signedIn() && memberId == request.auth.uid && activeMemberAfter(projectId) && request.resource.data.ownerUid == request.auth.uid && request.resource.data.enabled is bool;
         allow delete: if signedIn() && memberId == request.auth.uid;
       }
-      match /whatsappSubscriptions/{memberId} { allow read: if signedIn() && (memberId == request.auth.uid || admin(projectId)); allow write: if false; }
       match /reminders/{reminderId} {
         allow read: if activeMember(projectId);
         allow create, update, delete: if admin(projectId);
-        match /deliveries/{deliveryId} { allow read: if admin(projectId); allow write: if false; }
       }
     }
 
@@ -150,10 +148,6 @@ service cloud.firestore {
       allow delete: if false;
     }
 
-    match /whatsappIdentities/{id} { allow read, write: if false; }
-    match /whatsappLinkRequests/{id} { allow read, write: if false; }
-    match /whatsappProcessedMessages/{id} { allow read, write: if false; }
-    match /serverRateLimits/{id} { allow read, write: if false; }
     match /{document=**} { allow read, write: if false; }
   }
 }

@@ -26,7 +26,10 @@ describe("LinkedIn export parsing is schema-driven and conservative", () => {
 
   it("normalises only LinkedIn profile URLs", () => {
     assert.equal(normalizeLinkedInUrl("linkedin.com/in/Test-Person/?trk=x"), "https://www.linkedin.com/in/test-person");
-    assert.equal(normalizeLinkedInUrl("https://example.com/in/Test?x=1"), "https://example.com/in/Test?x=1");
+    assert.equal(normalizeLinkedInUrl("https://example.com/in/Test?x=1"), null);
+    assert.equal(normalizeLinkedInUrl("not a url"), null);
+    assert.throws(() => parseLinkedInExport('First Name,Last Name,URL\n"Maya,Patel,linkedin.com/in/maya'), /unmatched quote/i);
+    assert.throws(() => parseLinkedInExport(`First Name,Last Name,URL\n${"Maya,Patel,linkedin.com/in/maya\n".repeat(10_001)}`), /10,000 rows/i);
   });
 });
 

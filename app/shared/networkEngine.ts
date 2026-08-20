@@ -45,14 +45,16 @@ function normaliseHeader(value: string) { return value.toLowerCase().replace(/^\
 function clean(value: unknown, max = 500) { const next = String(value ?? "").trim(); return next ? next.slice(0, max) : null; }
 
 export function parseCsvRows(input: string) {
+  if (new TextEncoder().encode(input).byteLength > 8 * 1024 * 1024) throw new Error("LinkedIn CSV files must be 8 MB or smaller.");
   const rows: string[][] = []; let row: string[] = []; let field = ""; let quoted = false;
   for (let index = 0; index < input.length; index += 1) {
     const char = input[index];
     if (char === '"') { if (quoted && input[index + 1] === '"') { field += '"'; index += 1; } else quoted = !quoted; }
     else if (char === "," && !quoted) { row.push(field); field = ""; }
-    else if ((char === "\n" || char === "\r") && !quoted) { if (char === "\r" && input[index + 1] === "\n") index += 1; row.push(field); if (row.some((value) => value.trim())) rows.push(row); row = []; field = ""; }
+    else if ((char === "\n" || char === "\r") && !quoted) { if (char === "\r" && input[index + 1] === "\n") index += 1; row.push(field); if (row.some((value) => value.trim())) { rows.push(row); if (rows.length > 10_001) throw new Error("LinkedIn CSV imports are limited to 10,000 rows plus the header."); } row = []; field = ""; }
     else field += char;
   }
+  if (quoted) throw new Error("Malformed CSV: unmatched quote.");
   row.push(field); if (row.some((value) => value.trim())) rows.push(row);
   return rows;
 }
@@ -61,11 +63,11 @@ export function normalizeLinkedInUrl(value: string | null | undefined) {
   if (!value) return null;
   try {
     const url = new URL(value.includes("://") ? value : `https://${value}`);
-    if (!/(^|\.)linkedin\.com$/i.test(url.hostname)) return value.trim();
+    if (!/(^|\.)linkedin\.com$/i.test(url.hostname)) return null;
     const match = url.pathname.match(/^\/in\/([^/]+)/i);
-    if (!match) return `https://www.linkedin.com${url.pathname.replace(/\/+$/, "")}`;
+    if (!match) return null;
     return `https://www.linkedin.com/in/${match[1].toLowerCase()}`;
-  } catch { return value.trim() || null; }
+  } catch { return null; }
 }
 
 export function parseLinkedInExport(input: string): LinkedInPreview {

@@ -23,9 +23,9 @@ test("Network shared reads are tied to current contribution consent", () => {
 
 test("Personal navigation no longer swallows failed save", () => {
   const source = read("app/SketchCanvas.tsx");
-  assert.match(source, /await performSave\\(graphRef\\.current\\);/);
-  assert.doesNotMatch(source, /await performSave\\(graphRef\\.current\\)\\.catch\\(\\(\\) => undefined\\)/);
-  assert.match(source, /stay on current canvas/);
+  assert.match(source, /await performSave\(graphRef\.current\);/);
+  assert.doesNotMatch(source, /await performSave\(graphRef\.current\)\.catch\(\(\) => undefined\)/);
+  assert.match(source, /Circa kept you on this Project/);
 });
 
 test("deleting an introducer preserves endpoint relationship", () => {
@@ -36,7 +36,7 @@ test("deleting an introducer preserves endpoint relationship", () => {
 });
 
 test("existing relationship is reoriented to the user's source and target", () => {
-  assert.match(read("app/SketchCanvas.tsx"), /existing \\? \\{ \\.\\.\\.existing, sourceId, targetId,/);
+  assert.match(read("app/SketchCanvas.tsx"), /existing \? \{ \.\.\.existing, sourceId, targetId,/);
 });
 
 test("LinkedIn parser rejects non LinkedIn URLs and malformed quotes", () => {
@@ -48,8 +48,8 @@ test("LinkedIn parser rejects non LinkedIn URLs and malformed quotes", () => {
 
 test("Compose uses authenticated shared limiting and a streamed body cap", () => {
   const route = read("app/api/compose/route.ts");
-  assert.match(route, /verifyFirebaseAndAppCheckRequest/);
-  assert.match(route, /enforceRateLimit/);
+  assert.match(route, /verifyPermanentFirebaseRequest/);
+  assert.match(route, /enforceSharedRateLimit/);
   assert.match(route, /readJsonBodyWithLimit/);
   assert.doesNotMatch(route, /const requests = new Map/);
 });
@@ -61,12 +61,10 @@ test("Compose privacy copy distinguishes browser and server processing", () => {
   assert.match(panel, /AbortController/);
 });
 
-test("cloud migration stores consent and has a retriable state machine", () => {
-  const migration = read("app/firebase/migration.ts");
-  for (const state of ["preparing", "importing", "verifying", "complete", "failed"]) assert.match(migration, new RegExp(state));
-  assert.match(migration, /consented: true/);
-  assert.match(migration, /workspaces", "default", "folders"/);
-  assert.match(migration, /workspaces", "default", "people"/);
+test("incomplete Personal cloud migration is absent from the release", () => {
+  assert.equal(fs.existsSync("app/firebase/migration.ts"), false);
+  assert.equal(fs.existsSync("app/firebase/CloudMigrationCard.tsx"), false);
+  assert.doesNotMatch(read("app/auth/page.tsx"), /CloudMigrationCard|Copy Projects to cloud/);
 });
 
 test("directory IDs use a collision resistant digest", () => {

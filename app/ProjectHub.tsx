@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { CircaFolder, CircaProject, createId, createInitialGraph, deleteGlobalPerson, GlobalPerson, parseWorkspaceBackup, ProjectCategory, serializeWorkspace, Workspace } from "./graphStore";
+import { CircaFolder, CircaProject, consumeLocalWorkspaceWarning, createId, createInitialGraph, deleteGlobalPerson, getLocalRecoveryWorkspace, GlobalPerson, ProjectCategory, readWorkspaceBackupFile, serializeWorkspace, Workspace } from "./graphStore";
 import { displayCategory, projectTemplates } from "./projectTemplates";
 
 function Mark() {
@@ -55,6 +55,7 @@ export function ProjectHub({ workspace, view, onView, onChange, onNewProject, on
   const [restoreDraft, setRestoreDraft] = useState<Workspace | null>(null);
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [workspaceMessage, setWorkspaceMessage] = useState("");
+  const [recoveryCopy, setRecoveryCopy] = useState<Workspace | null>(null);
   const [assignPersonId, setAssignPersonId] = useState("");
   const backupInputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
@@ -77,6 +78,15 @@ export function ProjectHub({ workspace, view, onView, onChange, onNewProject, on
     document.addEventListener("keydown", keydown);
     return () => { document.removeEventListener("keydown", keydown); window.setTimeout(() => previous?.focus(), 0); };
   }, [activeModal]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setRecoveryCopy(getLocalRecoveryWorkspace());
+      const warning = consumeLocalWorkspaceWarning();
+      if (warning) setWorkspaceMessage(warning);
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   function update(next: Workspace) {
     onChange({ ...next, updatedAt: new Date().toISOString() });
@@ -128,14 +138,14 @@ export function ProjectHub({ workspace, view, onView, onChange, onNewProject, on
   }
 
   async function chooseBackup(file: File) {
-    try { setRestoreDraft(parseWorkspaceBackup(await file.text())); setWorkspaceMenuOpen(false); }
+    try { setRestoreDraft(await readWorkspaceBackupFile(file)); setWorkspaceMenuOpen(false); }
     catch (error) { setWorkspaceMessage(error instanceof Error ? error.message : "That backup could not be opened."); }
   }
 
   async function restoreBackup() {
     if (!restoreDraft) return;
     setRestoreBusy(true);
-    try { await onRestoreWorkspace(restoreDraft); setRestoreDraft(null); setWorkspaceMessage("Backup restored. Your previous Workspace was kept as a recovery copy."); }
+    try { await onRestoreWorkspace(restoreDraft); setRestoreDraft(null); setRecoveryCopy(workspace); setWorkspaceMessage("Backup restored. Your previous Workspace was kept as a recovery copy."); }
     catch (error) { setWorkspaceMessage(error instanceof Error ? error.message : "That backup could not be restored."); }
     finally { setRestoreBusy(false); }
   }
@@ -157,7 +167,7 @@ export function ProjectHub({ workspace, view, onView, onChange, onNewProject, on
     <header className="hub-topbar">
       <button className="brand brand-button" onClick={onHome}><Mark /><span className="brand-name">Circa<sup>beta</sup></span></button>
       <nav aria-label="Workspace navigation"><button className={view === "projects" ? "active" : ""} onClick={() => onView("projects")}>Projects</button><button className={view === "people" ? "active" : ""} onClick={() => onView("people")}>People</button></nav>
-      <div className="hub-top-actions"><div className="workspace-menu-wrap"><button className="workspace-menu-button" onClick={() => setWorkspaceMenuOpen((value) => !value)} aria-expanded={workspaceMenuOpen}>Workspace •••</button>{workspaceMenuOpen && <div className="workspace-menu"><button onClick={exportBackup}>Export backup</button><button onClick={() => backupInputRef.current?.click()}>Restore backup...</button></div>}<input ref={backupInputRef} className="visually-hidden" type="file" accept="application/json,.json" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void chooseBackup(file); event.currentTarget.value = ""; }} /></div><button className="button button-dark button-small" onClick={onNewProject}>＋ New project</button></div>
+      <div className="hub-top-actions"><div className="workspace-menu-wrap"><button className="workspace-menu-button" onClick={() => setWorkspaceMenuOpen((value) => !value)} aria-expanded={workspaceMenuOpen}>Workspace •••</button>{workspaceMenuOpen && <div className="workspace-menu"><button onClick={exportBackup}>Export backup</button><button onClick={() => backupInputRef.current?.click()}>Restore backup...</button>{recoveryCopy && <button onClick={() => { setRestoreDraft(recoveryCopy); setWorkspaceMenuOpen(false); }}>Review recovery copy...</button>}</div>}<input ref={backupInputRef} className="visually-hidden" type="file" accept="application/json,.json" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void chooseBackup(file); event.currentTarget.value = ""; }} /></div><button className="button button-dark button-small" onClick={onNewProject}>＋ New project</button></div>
     </header>
 
     <div className={`hub-layout${view === "people" ? " people-layout" : ""}`}>
@@ -174,6 +184,7 @@ export function ProjectHub({ workspace, view, onView, onChange, onNewProject, on
       </aside>}
 
       <section className="hub-content">
+        <div className="backup-reminder" role="note"><div><strong>Keep a portable backup</strong><span>Personal Circa data lives in this browser. Export a backup regularly and before clearing browser data.</span></div><button className="button button-paper button-small" onClick={exportBackup}>Export backup</button>{recoveryCopy && <button className="button button-paper button-small" onClick={() => setRestoreDraft(recoveryCopy)}>Review recovery copy</button>}</div>
         <div className="hub-intro">
           <div><p className="eyebrow"><span /> Your relationship sketchbook</p><h1>{view === "projects" ? (showArchived ? "Archived projects" : "Your projects") : "People"}</h1><p>{view === "projects" ? "A map for every part of your life." : "People you’ve mapped across your projects."}</p></div>
           <div className="hub-controls"><label className="hub-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={view === "projects" ? "Search projects" : "Search people"} /></label>{view === "projects" && <select value={sort} onChange={(event) => setSort(event.target.value as typeof sort)} aria-label="Sort projects"><option value="updated">Recently updated</option><option value="name">Name</option><option value="created">Date created</option></select>}</div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { User } from "firebase/auth";
-import { DocumentData, DocumentSnapshot, Timestamp, addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { DocumentData, DocumentSnapshot, Timestamp, WriteBatch, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { getFirebaseServices } from "../firebase/client";
 import type { CloudProject, CommunityItem, CommunityList, CommunityListType, CommunityMember, CommunityMemberSummary, EditProposal, PreviewSection, PublicInvite } from "./types";
 
@@ -16,19 +16,19 @@ const DEFAULT_SECTIONS: Array<{ title: string; listType: CommunityListType; desc
 function safeText(value: unknown, max = 500) { return String(value ?? "").trim().slice(0, max); }
 function cleanObject<T extends Record<string, unknown>>(value: T) { return Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined)) as T; }
 
-function randomToken(bytes = 24) {
-  const values = crypto.getRandomValues(new Uint8Array(bytes));
-  return [...values].map((value) => value.toString(16).padStart(2, "0")).join("");
-}
-
-function randomCode() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  const values = crypto.getRandomValues(new Uint8Array(8));
-  return [...values].map((value) => alphabet[value % alphabet.length]).join("");
-}
-
 function membershipIndex(project: CloudProject | { id: string; name: string; projectMode: string }, role: string, status = "active") {
   return { projectId: project.id, projectName: project.name, projectMode: project.projectMode, role, status, updatedAt: serverTimestamp(), schemaVersion: 1 };
+}
+
+function currentUid() {
+  const uid = getFirebaseServices().auth.currentUser?.uid;
+  if (!uid) throw new Error("Sign in before changing Community information.");
+  return uid;
+}
+
+function addModerationEvent(batch: WriteBatch, projectId: string, action: string, actorUid: string, targetId: string, details: Record<string, unknown> = {}) {
+  const ref = doc(collection(getFirebaseServices().db, "projects", projectId, "moderationEvents"));
+  batch.set(ref, { action, actorUid, targetId: safeText(targetId, 200), details: cleanObject(details), schemaVersion: 1, createdAt: serverTimestamp() });
 }
 
 function publicMemberDisplayName(value: unknown, role: CommunityMember["role"]) {
@@ -63,18 +63,10 @@ export async function createCommunity(user: User, input: { name: string; locatio
     joinedViaInviteId: "", consented: true, consentVersion: 1, consentedAt: serverTimestamp(), joinedAt: serverTimestamp(), updatedAt: serverTimestamp(), schemaVersion: 2,
   });
   batch.set(doc(db, "users", user.uid, "memberships", projectRef.id), membershipIndex(project, "owner"));
+  batch.set(doc(db, "projects", projectRef.id, "memberDirectory", user.uid), memberDirectoryPayload({ uid: user.uid, displayName: user.displayName || user.email || "Community owner", role: "owner" }));
+  addModerationEvent(batch, projectRef.id, "membership-created", user.uid, user.uid, { role: "owner" });
   sections.forEach((section, order) => batch.set(doc(collection(db, "projects", projectRef.id, "lists")), { ...section, order, schemaVersion: 2, createdAt: serverTimestamp(), updatedAt: serverTimestamp() }));
   await batch.commit();
-
-  // The safe member directory is a V16 addition. Keep Community creation compatible
-  // with already-deployed V15 rules while the V16 rules are still being tested.
-  // Once the V16 rules are deployed this succeeds; until then the core Community
-  // (project, owner membership, account index and lists) is still created atomically.
-  try {
-    await setDoc(doc(db, "projects", projectRef.id, "memberDirectory", user.uid), memberDirectoryPayload({ uid: user.uid, displayName: user.displayName || user.email || "Community owner", role: "owner" }));
-  } catch {
-    // Non-blocking during the V15 -> V16 rules transition.
-  }
   return projectRef.id;
 }
 
@@ -126,8 +118,9 @@ export function watchProposals(projectId: string, uid: string, canReview: boolea
 }
 
 export async function addPublishedList(projectId: string, title: string, listType: CommunityListType = "custom", description = "") {
-  const list = await addDoc(collection(getFirebaseServices().db, "projects", projectId, "lists"), { title: safeText(title, 80), description: safeText(description, 300), listType, order: Date.now(), schemaVersion: 2, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
-  return list.id;
+  const { db } = getFirebaseServices(); const list = doc(collection(db, "projects", projectId, "lists")); const batch = writeBatch(db);
+  batch.set(list, { title: safeText(title, 80), description: safeText(description, 300), listType, order: Date.now(), schemaVersion: 2, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  addModerationEvent(batch, projectId, "list-published", currentUid(), list.id); await batch.commit(); return list.id;
 }
 
 function itemPayload(item: Partial<CommunityItem>) {
@@ -137,13 +130,14 @@ function itemPayload(item: Partial<CommunityItem>) {
     url: safeText(item.url ?? item.website, 500), website: safeText(item.website ?? item.url, 500), address: safeText(item.address, 500), notes: safeText(item.notes, 1200),
     openingInformation: safeText(item.openingInformation, 300), date: safeText(item.date, 80), startDate: safeText(item.startDate, 20), startTime: safeText(item.startTime, 20), endTime: safeText(item.endTime, 20), location: safeText(item.location, 300), schoolType: safeText(item.schoolType, 120),
     binType: safeText(item.binType, 80), schedule: item.schedule, timezone: safeText(item.timezone, 80), areaLabel: safeText(item.areaLabel, 120), enabled: item.enabled !== false,
-    customFields: item.customFields || {}, order: Number(item.order || Date.now()), schemaVersion: 2,
+    customFields: item.customFields || {}, order: Number(item.order || Date.now()), contentVersion: Math.max(1, Number(item.contentVersion || 1)), schemaVersion: 2,
   });
 }
 
 export async function addPublishedItem(projectId: string, listId: string, item: Partial<CommunityItem>) {
-  const ref = doc(collection(getFirebaseServices().db, "projects", projectId, "lists", listId, "items"));
-  await setDoc(ref, { ...itemPayload(item), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  const { db } = getFirebaseServices(); const ref = doc(collection(db, "projects", projectId, "lists", listId, "items")); const batch = writeBatch(db);
+  batch.set(ref, { ...itemPayload({ ...item, contentVersion: 1 }), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+  addModerationEvent(batch, projectId, "item-published", currentUid(), ref.id, { listId }); await batch.commit();
   return ref.id;
 }
 
@@ -154,11 +148,10 @@ export async function importPublishedDirectoryItems(projectId: string, listId: s
   const { db } = getFirebaseServices();
   const batch = writeBatch(db);
 
-  items.forEach((item, index) => {
-    const providerId = safeText(item.customFields?.providerId, 80);
-    const fallback = safeText(item.title, 80) || `contact-${index + 1}`;
-    const key = (providerId || fallback).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 90) || `contact-${index + 1}`;
-    const ref = doc(db, "projects", projectId, "lists", listId, "items", `directory-${key}`);
+  const identified = await Promise.all(items.map(async (item, index) => ({ item, id: await importIdentityHash(item, index) })));
+
+  identified.forEach(({ item, id }) => {
+    const ref = doc(db, "projects", projectId, "lists", listId, "items", `directory-${id}`);
 
     batch.set(ref, {
       ...itemPayload(item),
@@ -167,28 +160,38 @@ export async function importPublishedDirectoryItems(projectId: string, listId: s
       updatedAt: serverTimestamp(),
     }, { merge: true });
   });
-
+  addModerationEvent(batch, projectId, "directory-import-published", currentUid(), listId, { count: items.length });
   await batch.commit();
   return { count: items.length };
 }
 
 export async function updatePublishedItem(projectId: string, listId: string, itemId: string, item: Partial<CommunityItem>) {
-  await updateDoc(doc(getFirebaseServices().db, "projects", projectId, "lists", listId, "items", itemId), { ...itemPayload(item), updatedAt: serverTimestamp() });
+  const { db } = getFirebaseServices(); const ref = doc(db, "projects", projectId, "lists", listId, "items", itemId);
+  await runTransaction(db, async (transaction) => { const current = await transaction.get(ref); if (!current.exists()) throw new Error("That published item no longer exists."); const nextVersion = Number(current.data().contentVersion || 0) + 1; const event = doc(collection(db, "projects", projectId, "moderationEvents")); transaction.update(ref, { ...itemPayload({ ...item, contentVersion: nextVersion }), contentVersion: nextVersion, updatedAt: serverTimestamp() }); transaction.set(event, { action: "item-updated", actorUid: currentUid(), targetId: itemId, details: { listId, baseVersion: nextVersion - 1 }, schemaVersion: 1, createdAt: serverTimestamp() }); });
+}
+
+export async function importIdentityHash(item: Partial<CommunityItem>, index = 0) {
+  const providerId = safeText(item.customFields?.providerId, 120).toLowerCase();
+  const identityParts = [item.title, item.category, item.phone, item.email, item.address].map((value) => safeText(value, 240).toLowerCase().replace(/\s+/g, " "));
+  const identity = providerId || (identityParts.some(Boolean) ? identityParts.join("\u001f") : `contact-${index}`);
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(identity));
+  return [...new Uint8Array(digest)].map((value) => value.toString(16).padStart(2, "0")).join("").slice(0, 40);
 }
 
 export async function deletePublishedItem(projectId: string, listId: string, itemId: string) {
-  await deleteDoc(doc(getFirebaseServices().db, "projects", projectId, "lists", listId, "items", itemId));
+  const { db } = getFirebaseServices(); const batch = writeBatch(db); batch.delete(doc(db, "projects", projectId, "lists", listId, "items", itemId)); addModerationEvent(batch, projectId, "item-deleted", currentUid(), itemId, { listId }); await batch.commit();
 }
 
-export async function submitProposal(user: User, projectId: string, proposal: Omit<EditProposal, "id" | "projectId" | "status" | "submittedBy" | "submittedByName" | "currentItem">) {
+export async function submitProposal(user: User, projectId: string, proposal: Omit<EditProposal, "id" | "projectId" | "status" | "submittedBy" | "submittedByName" | "currentItem" | "baseVersion">) {
   let currentItem: CommunityItem | null = null;
   if (proposal.operation !== "create") {
     const snapshot = await getDoc(doc(getFirebaseServices().db, "projects", projectId, "lists", proposal.listId, "items", proposal.itemId));
     if (!snapshot.exists()) throw new Error("That published item no longer exists.");
-    currentItem = { id: snapshot.id, ...snapshot.data() } as CommunityItem;
+    currentItem = snapshot.data() as CommunityItem;
   }
   const ref = doc(collection(getFirebaseServices().db, "projects", projectId, "editProposals"));
-  await setDoc(ref, { ...proposal, currentItem, proposedItem: proposal.proposedItem ? itemPayload(proposal.proposedItem) : null, projectId, status: "pending", submittedBy: user.uid, submittedByName: user.displayName || user.email || "Community member", submittedAt: serverTimestamp(), schemaVersion: 2 });
+  const baseVersion = Number(currentItem?.contentVersion || 0);
+  await setDoc(ref, { ...proposal, currentItem, proposedItem: proposal.proposedItem ? itemPayload({ ...proposal.proposedItem, contentVersion: proposal.operation === "create" ? 1 : baseVersion + 1 }) : null, baseVersion, projectId, status: "pending", submittedBy: user.uid, submittedByName: user.displayName || user.email || "Community member", submittedAt: serverTimestamp(), schemaVersion: 3 });
   return ref.id;
 }
 
@@ -200,25 +203,28 @@ export async function reviewProposal(projectId: string, proposalId: string, revi
     const proposal = snapshot.data() as EditProposal;
     if (proposal.status !== "pending") throw new Error("That proposal has already been reviewed.");
     if (proposal.submittedBy === reviewerId) throw new Error("Another admin must review your own suggestion.");
+    let currentVersion = 0;
+    const itemRef = proposal.itemId ? doc(db, "projects", projectId, "lists", proposal.listId, "items", proposal.itemId) : doc(collection(db, "projects", projectId, "lists", proposal.listId, "items"));
+    if (proposal.operation !== "create") {
+      const current = await transaction.get(itemRef);
+      if (!current.exists()) throw new Error("This proposal is stale because the published item no longer exists.");
+      currentVersion = Number(current.data().contentVersion || 0);
+      if (currentVersion !== Number(proposal.baseVersion || 0)) throw new Error("This proposal is stale because the published item changed. Review the current version and submit a new proposal.");
+    }
     if (decision === "approved") {
-      const itemRef = proposal.itemId ? doc(db, "projects", projectId, "lists", proposal.listId, "items", proposal.itemId) : doc(collection(db, "projects", projectId, "lists", proposal.listId, "items"));
       if (proposal.operation === "delete") transaction.delete(itemRef);
-      else if (proposal.operation === "update") transaction.set(itemRef, { ...proposal.proposedItem, updatedAt: serverTimestamp() }, { merge: true });
-      else transaction.set(itemRef, { ...proposal.proposedItem, createdBy: proposal.submittedBy, createdByName: proposal.submittedByName, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
+      else if (proposal.operation === "update") transaction.set(itemRef, { ...proposal.proposedItem, contentVersion: currentVersion + 1, updatedAt: serverTimestamp() }, { merge: true });
+      else transaction.set(itemRef, { ...proposal.proposedItem, contentVersion: 1, createdBy: proposal.submittedBy, createdByName: proposal.submittedByName, createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
     }
     transaction.update(proposalRef, { status: decision, reviewedBy: reviewerId, reviewedAt: serverTimestamp(), reviewNote: safeText(reviewNote, 500) });
+    const event = doc(collection(db, "projects", projectId, "moderationEvents")); transaction.set(event, { action: decision === "approved" ? "proposal-approved" : "proposal-rejected", actorUid: reviewerId, targetId: proposalId, details: { operation: proposal.operation, listId: proposal.listId, itemId: proposal.itemId, baseVersion: Number(proposal.baseVersion || 0) }, schemaVersion: 1, createdAt: serverTimestamp() });
   });
 }
 
 export async function createInvitation(project: CloudProject, userId: string, options: { label?: string; expiresAt?: string | null } = {}) {
-  const { db } = getFirebaseServices(); const token = randomToken(); const code = randomCode();
-  const expires = options.expiresAt ? Timestamp.fromDate(new Date(options.expiresAt)) : null;
-  const publicData = { projectId: project.id, projectMode: project.projectMode, projectName: project.name, description: project.description || "", location: project.location || "", previewSections: project.previewSections || [], code, label: safeText(options.label, 80), status: "active", expiresAt: expires, createdBy: userId, schemaVersion: 2, createdAt: serverTimestamp(), updatedAt: serverTimestamp() };
-  const batch = writeBatch(db);
-  batch.set(doc(db, "invites", token), publicData);
-  batch.set(doc(db, "joinCodes", code), { ...publicData, token });
-  batch.set(doc(db, "projects", project.id, "invitations", token), { ...publicData, token });
-  await batch.commit(); return { token, code };
+  const user = getFirebaseServices().auth.currentUser; if (!user || user.uid !== userId || user.isAnonymous) throw new Error("Use a permanent Community admin account to create invitations.");
+  const response = await fetch("/api/invitations", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${await user.getIdToken()}` }, body: JSON.stringify({ projectId: project.id, label: safeText(options.label, 80), expiresAt: options.expiresAt || null }) });
+  const payload = await response.json() as { token?: string; code?: string; error?: string }; if (!response.ok || !payload.token || !payload.code) throw new Error(payload.error || "Circa could not create that invitation."); return { token: payload.token, code: payload.code };
 }
 
 export function watchInvitations(projectId: string, callback: (invites: PublicInvite[]) => void) {
@@ -227,7 +233,7 @@ export function watchInvitations(projectId: string, callback: (invites: PublicIn
 
 export async function revokeInvitation(token: string, code: string, projectId: string) {
   const { db } = getFirebaseServices(); const batch = writeBatch(db); const update = { status: "revoked", revokedAt: serverTimestamp(), updatedAt: serverTimestamp() };
-  batch.update(doc(db, "invites", token), update); batch.update(doc(db, "joinCodes", code), update); batch.update(doc(db, "projects", projectId, "invitations", token), update); await batch.commit();
+  batch.update(doc(db, "invites", token), update); batch.update(doc(db, "joinCodes", code), update); batch.update(doc(db, "projects", projectId, "invitations", token), update); addModerationEvent(batch, projectId, "invitation-revoked", currentUid(), token); await batch.commit();
 }
 
 function publicInviteFromSnapshot(snapshot: DocumentSnapshot<DocumentData>, token: string): PublicInvite | null {
@@ -238,7 +244,7 @@ function publicInviteFromSnapshot(snapshot: DocumentSnapshot<DocumentData>, toke
 }
 
 export async function getPublicInvite(token: string) { const snapshot = await getDoc(doc(getFirebaseServices().db, "invites", safeText(token, 160))); return publicInviteFromSnapshot(snapshot, token); }
-export async function resolveJoinCode(code: string) { const snapshot = await getDoc(doc(getFirebaseServices().db, "joinCodes", safeText(code, 20).toUpperCase())); if (!snapshot.exists()) return null; return publicInviteFromSnapshot(snapshot, safeText(snapshot.data().token, 160)); }
+export async function resolveJoinCode(code: string) { const response = await fetch("/api/join-code", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code: safeText(code, 20).toUpperCase() }) }); const payload = await response.json() as { invite?: PublicInvite; error?: string }; if (response.status === 404) return null; if (!response.ok) throw new Error(payload.error || "Circa could not check that code."); return payload.invite || null; }
 
 export async function joinProjectByInvite(user: User, invite: PublicInvite) {
   const { db } = getFirebaseServices(); const inviteRef = doc(db, "invites", invite.token); const memberRef = doc(db, "projects", invite.projectId, "members", user.uid); const directoryRef = doc(db, "projects", invite.projectId, "memberDirectory", user.uid); const indexRef = doc(db, "users", user.uid, "memberships", invite.projectId);
@@ -257,6 +263,7 @@ export async function joinProjectByInvite(user: User, invite: PublicInvite) {
     transaction.set(memberRef, { uid: user.uid, role: "member", status: "active", displayName, isAnonymous: user.isAnonymous, joinedViaInviteId: invite.token, consented: true, consentedAt: serverTimestamp(), consentVersion: 1, joinedAt, updatedAt: serverTimestamp(), schemaVersion: 2 }, { merge: true });
     transaction.set(directoryRef, memberDirectoryPayload({ uid: user.uid, displayName, role: "member", status: "active", joinedAt }), { merge: true });
     transaction.set(indexRef, membershipIndex({ id: invite.projectId, name: invite.projectName, projectMode: invite.projectMode }, "member"), { merge: true });
+    const eventRef = doc(collection(db, "projects", invite.projectId, "moderationEvents")); transaction.set(eventRef, { action: existing.exists() ? "membership-rejoined" : "membership-created", actorUid: user.uid, targetId: user.uid, details: { role: "member", inviteId: invite.token }, schemaVersion: 1, createdAt: serverTimestamp() });
     return { alreadyMember: false, role: "member" as const };
   });
   try { window.localStorage.setItem(invite.projectMode === "network" ? "circa_last_network" : "circa_last_community", invite.projectId); } catch { /* Firestore is authoritative */ }
@@ -270,6 +277,7 @@ export async function updateMemberRole(project: CloudProject, memberId: string, 
   batch.update(doc(db, "projects", project.id, "members", memberId), { role, updatedAt: serverTimestamp() });
   batch.set(doc(db, "projects", project.id, "memberDirectory", memberId), { role, status: "active", updatedAt: serverTimestamp() }, { merge: true });
   batch.set(doc(db, "users", memberId, "memberships", project.id), membershipIndex(project, role), { merge: true });
+  addModerationEvent(batch, project.id, "member-role-changed", currentUid(), memberId, { role });
   await batch.commit();
 }
 
@@ -278,6 +286,7 @@ export async function removeMember(project: CloudProject, memberId: string) {
   batch.update(doc(db, "projects", project.id, "members", memberId), { status: "removed", updatedAt: serverTimestamp() });
   batch.set(doc(db, "projects", project.id, "memberDirectory", memberId), { status: "removed", updatedAt: serverTimestamp() }, { merge: true });
   batch.set(doc(db, "users", memberId, "memberships", project.id), membershipIndex(project, "member", "removed"), { merge: true });
+  addModerationEvent(batch, project.id, "member-removed", currentUid(), memberId);
   await batch.commit();
 }
 

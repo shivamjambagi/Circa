@@ -16,7 +16,7 @@ Instead of presenting relationships as rows in a contact manager, Circa turns th
 
 The result is a human-friendly graph that feels closer to a notebook or personal whiteboard than a CRM, dashboard or traditional social network.
 
-Circa is currently in active development. The core Personal Map experience works locally in the browser without an account or cloud database. Community, Network, account and messaging ideas described later in this document are part of the wider product direction and should not be treated as live integrations unless explicitly marked otherwise.
+Circa is currently in active development. The core Personal Map experience works locally in the browser without an account or cloud database. Community, Network and account routes are cloud Beta experiences and are not approved for unrestricted public use until the documented privacy and production gates are complete.
 
 ---
 
@@ -76,7 +76,7 @@ Personal Maps are local-first. They should remain usable without authentication 
 
 ### Network
 
-Network is the planned professional pathway experience. It is intended to help members understand known connection paths built from real, intentionally contributed edges.
+Network is the cloud Beta professional pathway experience. It helps members understand known connection paths built from real, intentionally contributed edges.
 
 Network is about questions such as:
 
@@ -89,7 +89,7 @@ It is not intended to render thousands of contacts at once or invent links based
 
 ### Community
 
-Community is the planned shared knowledge experience. It is intended for approved local information, directories, events, collections, reminders, member suggestions and optional messaging access.
+Community is the cloud Beta shared knowledge experience. It is intended for approved local information, directories, events, collections, reminders and member suggestions.
 
 Community data must be useful and real. Pending suggestions must not appear as approved information, and opening an invitation must never silently create membership.
 
@@ -611,7 +611,7 @@ Relationship data is personal, so privacy is part of the product model rather th
 - Free-form Compose sends only reduced context to a configured server-side provider.
 - Circa does not make unsupported encryption claims.
 
-### Planned shared experiences
+### Cloud Beta experiences
 
 - Community membership requires explicit consent.
 - Opening an invitation does not silently join or authenticate a visitor.

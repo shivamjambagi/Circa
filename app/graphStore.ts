@@ -158,6 +158,10 @@ export const LEGACY_WORKSPACE_STORAGE_KEY = "circa_workspace_v2";
 export const WORKSPACE_STORAGE_KEY = "circa_workspace_v3";
 export const WORKSPACE_BACKUP_KEY = "circa_workspace_backup_v2";
 export const WORKSPACE_RECOVERY_KEY = "circa_workspace_recovery_v10";
+export const WORKSPACE_CORRUPT_COPY_KEY = "circa_workspace_corrupt_copy_v1";
+export const MAX_WORKSPACE_BACKUP_BYTES = 10 * 1024 * 1024;
+export const MAX_LOCAL_WORKSPACE_BYTES = 4_500_000;
+const WORKSPACE_LOAD_WARNING_KEY = "circa_workspace_load_warning_v1";
 const TAB_SESSION_STORAGE_KEY = "circa_tab_session_id";
 let fallbackTabSessionId = "";
 
@@ -374,10 +378,68 @@ export function serializeWorkspace(workspace: Workspace) {
   return JSON.stringify(normalizeWorkspace(workspace) ?? createEmptyWorkspace(), null, 2);
 }
 
+export function workspaceTextBytes(raw: string) {
+  return new TextEncoder().encode(raw).byteLength;
+}
+
+export function validateWorkspaceBackupSize(size: number) {
+  if (!Number.isFinite(size) || size < 0 || size > MAX_WORKSPACE_BACKUP_BYTES) {
+    throw new Error("That backup is too large. Circa accepts workspace backups up to 10 MB.");
+  }
+}
+
 export function parseWorkspaceBackup(raw: string): Workspace {
+  validateWorkspaceBackupSize(workspaceTextBytes(raw));
   const parsed = normalizeWorkspace(JSON.parse(raw));
   if (!parsed) throw new Error("This file is not a valid Circa workspace backup.");
   return parsed;
+}
+
+export async function readWorkspaceBackupFile(file: Pick<File, "size" | "text">) {
+  validateWorkspaceBackupSize(file.size);
+  return parseWorkspaceBackup(await file.text());
+}
+
+function storageFailure(error: unknown) {
+  const source = error instanceof Error ? error : new Error(String(error));
+  if (source.name === "QuotaExceededError" || /quota|storage.*full|exceed/i.test(source.message)) {
+    return new Error("This browser's local storage is full. Export a backup, free browser storage, then retry. Your current screen has not been closed.");
+  }
+  return source;
+}
+
+function assertWorkspaceFitsLocalStorage(raw: string) {
+  if (workspaceTextBytes(raw) > MAX_LOCAL_WORKSPACE_BYTES) {
+    const error = new Error("This Workspace is too large for Circa's safe local-storage limit. Export a backup and reduce its size before adding more data.");
+    error.name = "QuotaExceededError";
+    throw error;
+  }
+}
+
+function setWorkspaceLoadWarning(message: string) {
+  try { window.sessionStorage.setItem(WORKSPACE_LOAD_WARNING_KEY, message); } catch { /* warning storage is best effort */ }
+}
+
+export function consumeLocalWorkspaceWarning() {
+  if (typeof window === "undefined") return "";
+  try {
+    const message = window.sessionStorage.getItem(WORKSPACE_LOAD_WARNING_KEY) ?? "";
+    window.sessionStorage.removeItem(WORKSPACE_LOAD_WARNING_KEY);
+    return message;
+  } catch { return ""; }
+}
+
+export function getLocalRecoveryWorkspace() {
+  if (typeof window === "undefined") return null;
+  for (const key of [WORKSPACE_RECOVERY_KEY, WORKSPACE_BACKUP_KEY]) {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) continue;
+    try {
+      const workspace = normalizeWorkspace(JSON.parse(raw));
+      if (workspace) return workspace;
+    } catch { /* try the next retained copy */ }
+  }
+  return null;
 }
 
 function readLocalWorkspace(): Workspace {
@@ -386,20 +448,25 @@ function readLocalWorkspace(): Workspace {
   if (current) {
     try { const normalized = normalizeWorkspace(JSON.parse(current)); if (normalized) return normalized; }
     catch { /* try the retained migration backup below */ }
+    try {
+      if (workspaceTextBytes(current) <= MAX_WORKSPACE_BACKUP_BYTES) window.localStorage.setItem(WORKSPACE_CORRUPT_COPY_KEY, current);
+    } catch { /* preserving the corrupt copy is best effort */ }
+    setWorkspaceLoadWarning("Circa found damaged local data. It preserved a recovery copy and opened the newest valid backup it could find.");
   }
   const v2 = window.localStorage.getItem(LEGACY_WORKSPACE_STORAGE_KEY);
   if (v2) {
     if (!window.localStorage.getItem(WORKSPACE_BACKUP_KEY)) window.localStorage.setItem(WORKSPACE_BACKUP_KEY, v2);
-    try { const normalized = normalizeWorkspace(JSON.parse(v2)); if (normalized) { window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(normalized)); return normalized; } }
+    try { const normalized = normalizeWorkspace(JSON.parse(v2)); if (normalized) { window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(normalized)); if (current) setWorkspaceLoadWarning("Circa recovered your Workspace from a retained local backup. Review it, then export a fresh backup."); return normalized; } }
     catch { /* try the retained backup */ }
   }
   const retained = window.localStorage.getItem(WORKSPACE_BACKUP_KEY);
   if (retained) {
-    try { const normalized = normalizeWorkspace(JSON.parse(retained)); if (normalized) { window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(normalized)); return normalized; } }
+    try { const normalized = normalizeWorkspace(JSON.parse(retained)); if (normalized) { window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(normalized)); setWorkspaceLoadWarning("Circa recovered your Workspace from a retained local backup. Review it, then export a fresh backup."); return normalized; } }
     catch { /* continue to the oldest graph migration */ }
   }
   const legacy = window.localStorage.getItem(STORAGE_KEY);
   if (legacy) { const migrated = migrateLegacyGraph(legacy); window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(migrated)); return migrated; }
+  if (current) setWorkspaceLoadWarning("Circa could not recover the damaged Workspace automatically. The original recovery copy was retained; import a separate backup before continuing.");
   return createEmptyWorkspace();
 }
 
@@ -407,7 +474,10 @@ function writeLocalWorkspace(workspace: Workspace, projectId = "") {
   if (typeof window === "undefined") return workspace;
   const current = (() => { try { return readLocalWorkspace(); } catch { return createEmptyWorkspace(); } })();
   const saved: Workspace = { ...(normalizeWorkspace(workspace) ?? createEmptyWorkspace()), revision: Math.max(current.revision, workspace.revision) + 1, updatedAt: new Date().toISOString() };
-  window.localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(saved));
+  const serialized = JSON.stringify(saved);
+  assertWorkspaceFitsLocalStorage(serialized);
+  try { window.localStorage.setItem(WORKSPACE_STORAGE_KEY, serialized); }
+  catch (error) { throw storageFailure(error); }
   window.dispatchEvent(new CustomEvent("circa-workspace-saved", { detail: { revision: saved.revision, updatedAt: saved.updatedAt, projectId } }));
   if (typeof BroadcastChannel !== "undefined") { const channel = new BroadcastChannel("circa-workspace"); channel.postMessage({ revision: saved.revision, updatedAt: saved.updatedAt, projectId, source: getTabSessionId() }); channel.close(); }
   return saved;
@@ -420,13 +490,15 @@ export class LocalWorkspaceStore implements WorkspaceStore {
   }
   async saveWorkspace(workspace: Workspace) {
     try { return writeLocalWorkspace(workspace); }
-    catch (error) { throw new Error(error instanceof Error ? `Circa could not save locally: ${error.message}` : "Circa could not save locally."); }
+    catch (error) { const failure = storageFailure(error); throw new Error(`Circa could not save locally: ${failure.message}`); }
   }
   async restoreWorkspace(workspace: Workspace) {
     if (typeof window === "undefined") return normalizeWorkspace(workspace) ?? createEmptyWorkspace();
     try {
       const current = readLocalWorkspace();
-      window.localStorage.setItem(WORKSPACE_RECOVERY_KEY, JSON.stringify(current));
+      const recovery = JSON.stringify(current);
+      assertWorkspaceFitsLocalStorage(recovery);
+      window.localStorage.setItem(WORKSPACE_RECOVERY_KEY, recovery);
       return writeLocalWorkspace({ ...workspace, revision: Math.max(current.revision, workspace.revision) });
     } catch (error) {
       throw new Error(error instanceof Error ? `Circa could not restore that backup: ${error.message}` : "Circa could not restore that backup.");
@@ -485,7 +557,9 @@ export function deleteGlobalPerson(workspace: Workspace, globalId: string): Work
   const projects = workspace.projects.map((project) => {
     const removedIds = new Set(project.graph.people.filter((person) => person.globalId === globalId && !person.isSelf).map((person) => person.id));
     const people = project.graph.people.filter((person) => !removedIds.has(person.id)).map((person) => removedIds.has(person.reportsToPersonId) ? { ...person, reportsToPersonId: "" } : person);
-    const relationships = project.graph.relationships.filter((relationship) => !removedIds.has(relationship.sourceId) && !removedIds.has(relationship.targetId) && !removedIds.has(relationship.introducedByPersonId));
+    const relationships = project.graph.relationships
+      .filter((relationship) => !removedIds.has(relationship.sourceId) && !removedIds.has(relationship.targetId))
+      .map((relationship) => removedIds.has(relationship.introducedByPersonId) ? { ...relationship, introducedByPersonId: "", updatedAt: new Date().toISOString() } : relationship);
     return { ...project, graph: { ...project.graph, people, relationships, updatedAt: new Date().toISOString() } };
   });
   return { ...workspace, projects, globalPeople: workspace.globalPeople.filter((person) => person.id !== globalId), updatedAt: new Date().toISOString() };

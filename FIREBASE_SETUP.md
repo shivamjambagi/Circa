@@ -1,6 +1,6 @@
 # Circa cloud setup
 
-Circa remains local-first for ordinary maps. Firebase adds optional accounts, cloud migration, private Networks, Community membership, approved Community information, proposals and invitations. Netlify remains the intended public frontend and trusted function host.
+Circa remains local-first for ordinary maps. Firebase adds accounts for private Networks, Community membership, approved Community information, proposals and invitations. Netlify remains the intended public frontend and trusted function host.
 
 ## Firebase project
 
@@ -36,7 +36,7 @@ The rules enforce member proposals, admin publication/review, cross-Community is
 
 ## Existing local data
 
-`circa_workspace_v3` remains the working local source for existing map projects. On a permanent account, `/auth` offers an explicit copy to cloud. Before copying, Circa retains a local backup. The migration uses a per-user `localWorkspaceV3` marker, is safe to retry, verifies the completion marker, and never deletes the local workspace.
+`circa_workspace_v3` remains the working source for Personal projects. The first public release does not copy Personal workspaces to Firebase: the incomplete cloud-copy UI and implementation were removed under P0.4. Users keep portability through the local JSON export, restore, retained migration backup and restore recovery copy.
 
 ## Netlify routing
 

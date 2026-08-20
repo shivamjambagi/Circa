@@ -2,13 +2,13 @@ import { NextResponse } from "next/server";
 import type { ComposeDraft, ComposeDraftPerson, ComposeDraftRelationship, ComposeFieldPatch } from "../../composeEngine";
 import { compileSemanticInterpretation, validateSemanticInterpretation } from "../../composeSemantics";
 import { composeProviderInstruction } from "../../composeSystemPrompt";
-import { interpretNaturalLanguage } from "../../localSemanticInterpreter";
 import { ontologyForProvider } from "../../composeOntology";
 import { createId, createInitialGraph } from "../../graphStore";
 import type { GlobalPerson, Graph, Person, ProjectCategory, RelationshipDirection, RelationshipStrength, RelationshipType } from "../../graphStore";
+import { enforceSharedRateLimit, privacyPreservingNetworkSignal, readJsonBodyWithLimit, readResponseJsonWithLimit, reportServerFailure, serverErrorStatus, verifyPermanentFirebaseRequest } from "../../server/firebaseAdmin";
 
 const RELATIONSHIP_TYPES = new Set<RelationshipType>(["very-close", "close", "friend", "acquaintance", "professional", "family"]);
-const requests = new Map<string, { count: number; resetAt: number }>();
+export const runtime = "nodejs";
 
 function externalProviderStatus() {
   const provider = process.env.AI_PROVIDER;
@@ -172,16 +172,19 @@ function globalPeopleContext(value: unknown): GlobalPerson[] {
 }
 
 export async function POST(request: Request) {
-  const contentLength = Number(request.headers.get("content-length") || 0);
-  if (contentLength > 65_536) return NextResponse.json({ error: "That Compose request is too large. Use CSV for larger imports." }, { status: 413, headers: { "cache-control": "no-store" } });
-  const client = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0] || "local";
-  const now = Date.now(); const bucket = requests.get(client);
-  if (!bucket || bucket.resetAt < now) requests.set(client, { count: 1, resetAt: now + 60_000 });
-  else if (bucket.count >= 20) return NextResponse.json({ error: "Compose is receiving too many requests. Wait a minute and try again." }, { status: 429, headers: { "cache-control": "no-store", "retry-after": "60" } });
-  else bucket.count += 1;
+  const external = externalProviderStatus();
+  if (!external.available) return NextResponse.json({ error: "External Describe is not configured. Local Describe remains available in this browser." }, { status: 503, headers: { "cache-control": "no-store" } });
   let body: Record<string, unknown>;
-  try { body = await request.json() as Record<string, unknown>; }
-  catch { return NextResponse.json({ error: "The Compose request was not valid JSON." }, { status: 400 }); }
+  try {
+    const identity = await verifyPermanentFirebaseRequest(request, process.env.COMPOSE_REQUIRE_APPCHECK === "true");
+    const networkSignal = privacyPreservingNetworkSignal(request);
+    await enforceSharedRateLimit("external-compose", `${identity.uid}:${networkSignal}`, 20, 60_000);
+    body = await readJsonBodyWithLimit(request, 65_536);
+  } catch (error) {
+    const failure = serverErrorStatus(error);
+    const requestId = failure.status >= 500 ? reportServerFailure("compose-request", error, request) : "";
+    return NextResponse.json({ error: failure.message }, { status: failure.status, headers: { "cache-control": "no-store", ...(failure.status === 429 ? { "retry-after": "60" } : {}), ...(requestId ? { "x-circa-request-id": requestId } : {}) } });
+  }
   const prompt = text(body.text, 12_000);
   const mode = body.mode === "change" ? "change" : "create";
   if (!prompt) return NextResponse.json({ error: "Add a description before creating a draft." }, { status: 400 });
@@ -194,14 +197,6 @@ export async function POST(request: Request) {
   const resolutions = body.resolutions && typeof body.resolutions === "object" ? Object.fromEntries(Object.entries(body.resolutions as Record<string, unknown>).slice(0, 50).flatMap(([id, value]) => {
     const key = text(id, 120); const choice = text(value, 120); return key && choice ? [[key, choice]] : [];
   })) : {};
-  const external = externalProviderStatus();
-
-  if (!external.available) {
-    const interpretation = interpretNaturalLanguage(prompt, { mode, category, customCategoryName, graph, resolutions });
-    const draft = compileSemanticInterpretation(interpretation, { mode, source: "describe", graph, globalPeople: globals, category });
-    return NextResponse.json({ draft, engine: "local-semantic" }, { headers: { "cache-control": "no-store" } });
-  }
-
   const provider = process.env.AI_PROVIDER;
   const endpoint = process.env.AI_API_URL;
   if (provider !== "custom-http" || !endpoint) return NextResponse.json({ error: "The configured Compose provider is incomplete." }, { status: 503 });
@@ -217,9 +212,10 @@ export async function POST(request: Request) {
         mode,
         system,
         instruction: system,
-        userDescription: prompt,
-        prompt,
+        userDescription: { dataClassification: "untrusted-user-data", delimiter: "CIRCA_USER_DESCRIPTION_JSON", content: prompt },
+        prompt: JSON.stringify({ CIRCA_USER_DESCRIPTION_JSON: prompt }),
         context: {
+          dataClassification: "untrusted-project-data",
           project: { category, customCategoryName, relationshipLabels: ontologyForProvider(category, customLabels) },
           selectedPersonId: text(body.selectedPersonId, 120),
           people: graph.people.map(({ id, name, nickname, role, company, department, team, subject, contextRole, reportsToPersonId, isSelf }) => ({ id, name, nickname, role, company, department, team, subject, contextRole, reportsToPersonId, isSelf })),
@@ -232,7 +228,7 @@ export async function POST(request: Request) {
       }),
       signal: controller.signal,
     });
-    const payload = await response.json() as { interpretation?: unknown; semantic?: unknown; draft?: unknown; result?: unknown; error?: string };
+    const payload = await readResponseJsonWithLimit(response, 512 * 1024) as { interpretation?: unknown; semantic?: unknown; draft?: unknown; result?: unknown; error?: string };
     if (!response.ok) return NextResponse.json({ error: payload.error || "The configured Compose provider could not complete the request." }, { status: 502 });
     const semantic = validateSemanticInterpretation(payload.interpretation ?? payload.semantic ?? payload.result ?? payload);
     if (semantic) {
@@ -243,6 +239,8 @@ export async function POST(request: Request) {
     if (legacyDraft) return NextResponse.json({ draft: legacyDraft, engine: "legacy-provider", warning: "Provider should migrate to circa-semantic-v1." }, { headers: { "cache-control": "no-store" } });
     return NextResponse.json({ error: "The provider returned a semantic proposal Circa could not safely validate." }, { status: 502 });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error && error.name === "AbortError" ? "Compose took too long. Your map was not changed." : "The configured Compose provider could not be reached. Your map was not changed." }, { status: 502 });
+    const requestId = reportServerFailure("compose-provider", error, request);
+    const message = error instanceof Error && error.name === "AbortError" ? "Compose took too long. Your map was not changed." : error instanceof Error && error.message === "PROVIDER_RESPONSE_TOO_LARGE" ? "The provider returned too much data. Your map was not changed." : error instanceof Error && error.message === "PROVIDER_INVALID_JSON" ? "The provider returned invalid JSON. Your map was not changed." : "The configured Compose provider could not be reached. Your map was not changed.";
+    return NextResponse.json({ error: message }, { status: 502, headers: { "cache-control": "no-store", "x-circa-request-id": requestId } });
   } finally { clearTimeout(timeout); }
 }

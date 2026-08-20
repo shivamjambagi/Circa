@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import SketchCanvas from "./SketchCanvas";
 import { CreateProjectView, ProjectHub } from "./ProjectHub";
 import { CircaProject, createEmptyWorkspace, createProject, createWorkspaceStore, getTabSessionId, Workspace } from "./graphStore";
-import { useFirebaseUser } from "./firebase/FirebaseProvider";
 
 type PreviewPerson = {
   name: string;
@@ -41,8 +40,7 @@ function PersonCard({ person, you = false }: { person: PreviewPerson; you?: bool
 }
 
 function Landing() {
-  const { user } = useFirebaseUser();
-  const startHref = user && !user.isAnonymous ? "/start" : "/auth?returnTo=/start";
+  const startHref = "/?workspace=1";
   const [menuOpen, setMenuOpen] = useState(false);
   const lastCommunity = useSyncExternalStore(() => () => undefined, () => { try { return window.localStorage.getItem("circa_last_community") || ""; } catch { return ""; } }, () => "");
   return (
@@ -56,7 +54,7 @@ function Landing() {
           <a href="#how">How it works</a>
           <a href="#communities">Communities</a>
           <a href="#network">Network</a>
-          <a href={user && !user.isAnonymous ? "/account" : "/auth"}>{user && !user.isAnonymous ? "Account" : "Sign in"}</a>
+          <a href="/auth">Sign in</a>
           <a className="button button-small button-outline" href={startHref}>Open Circa</a>
         </nav>
       </header>
@@ -70,7 +68,7 @@ function Landing() {
             <a className="button button-dark" href={startHref}>Open Circa <span>↗</span></a>
             <a className="button button-paper" href="#how">See how it works <span>↓</span></a>
           </div>
-          <p className="privacy-note">✦ Personal maps stay local by default.<small>Sign in to enter Circa; your private maps still stay in this browser unless you explicitly choose a cloud feature. Export a backup anytime.</small></p>
+          <p className="privacy-note">✦ Personal maps stay local by default.<small>No account is needed. Sign in only for Communities, Networks or another explicit cloud feature. Export a backup anytime.</small></p>
         </div>
 
         <div className="network-preview" aria-label="Example relationship sketch">
@@ -100,14 +98,14 @@ function Landing() {
         <article><span className="feature-icon peach">∞</span><div><strong>Remember introductions</strong><p>See how your network formed.</p></div></article>
       </section>
 
-      {lastCommunity && user?.isAnonymous && <aside className="return-community"><span>Temporary Community session</span><a href={`/community/${lastCommunity}`}>Return to your Community →</a></aside>}
+      {lastCommunity && <aside className="return-community"><span>Your last shared space</span><a href={`/community/${lastCommunity}`}>Return to your Community →</a></aside>}
 
       <section className="circa-paths" aria-labelledby="circa-paths-title">
         <header><p className="eyebrow"><span /> One Circa</p><h2 id="circa-paths-title">Three ways to understand<br /><em>your people.</em></h2><p className="circa-paths-support">Map privately, explore professional paths, or share useful Community knowledge.</p></header>
         <div className="experience-grid">
           <article className="experience-card map"><div className="mini-map" aria-hidden="true"><i className="mini-you">You</i><i>Maya</i><i>Sam</i><i>Daniel</i><span /><span /><span /></div><div><small>01 · Personal</small><h3>Map your people</h3><p>Sketch the people and relationships across your personal life, family, school and work.</p><a href={startHref}>Open Circa →</a></div></article>
-          <article className="experience-card network" id="network"><div className="mini-path" aria-hidden="true"><i>You</i><span>→</span><i>Maya</i><span>→</span><i>James</i><span>→</span><i>Priya</i></div><div><small>02 · Professional</small><h3>Bring in your network</h3><p>Import your LinkedIn connections and discover known pathways through the professional network available to you.</p><a href="/network/new">Explore Networks →</a></div></article>
-          <article className="experience-card community" id="communities"><div className="mini-community" aria-hidden="true"><small>Tomorrow</small><strong>Recycling</strong><span>Local services <b>18</b></span><span>Residents meeting <b>Thu</b></span><em>Community reminder · Upcoming</em></div><div><small>03 · Shared</small><h3>Circa Communities</h3><p>Keep useful local information, recommendations, reminders and community knowledge in one place.</p><a href="/community/new">Create a Community →</a></div></article>
+          <article className="experience-card network" id="network"><div className="mini-path" aria-hidden="true"><i>You</i><span>→</span><i>Maya</i><span>→</span><i>James</i><span>→</span><i>Priya</i></div><div><small>02 · Professional · Cloud Beta</small><h3>Bring in your network</h3><p>Import your LinkedIn connections and discover known pathways through the professional network available to you.</p><a href="/network/new">Explore Networks →</a></div></article>
+          <article className="experience-card community" id="communities"><div className="mini-community" aria-hidden="true"><small>Tomorrow</small><strong>Recycling</strong><span>Local services <b>18</b></span><span>Residents meeting <b>Thu</b></span><em>Community reminder · Upcoming</em></div><div><small>03 · Shared · Cloud Beta</small><h3>Circa Communities</h3><p>Keep useful local information, recommendations, reminders and community knowledge in one place.</p><a href="/community/new">Create a Community →</a></div></article>
         </div><aside className="join-utility"><span>Already have a Community or Network invite?</span><a href="/join">Enter a code →</a></aside>
       </section>
 
@@ -148,13 +146,12 @@ function Landing() {
         </aside>
       </section>
 
-      <footer><a className="brand" href="#top"><Mark /><span className="brand-name">Circa<sup>beta</sup></span></a><p>Map your people.</p><a href={startHref}>Open Circa ↗</a></footer>
+      <footer><a className="brand" href="#top"><Mark /><span className="brand-name">Circa<sup>beta</sup></span></a><p>Map your people.</p><nav aria-label="Legal and help"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><a href="/help">Help</a></nav><a href={startHref}>Open Circa ↗</a></footer>
     </main>
   );
 }
 
 export default function Home() {
-  const { user, loading: authLoading } = useFirebaseUser();
   const store = useMemo(() => createWorkspaceStore(), []);
   const [workspace, setWorkspace] = useState<Workspace>(() => createEmptyWorkspace());
   const [loaded, setLoaded] = useState(false);
@@ -176,14 +173,9 @@ export default function Home() {
   }, [store]);
 
   useEffect(() => {
-    if (!loaded || authLoading || typeof window === "undefined") return;
+    if (!loaded || typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("workspace") !== "1") return;
-    const returnTo = `${window.location.pathname}${window.location.search}`;
-    if (!user || user.isAnonymous) {
-      window.location.replace(`/auth?returnTo=${encodeURIComponent(returnTo)}`);
-      return;
-    }
     const requestedProject = params.get("project") || "";
     const timer = window.setTimeout(() => {
       if (requestedProject && workspace.projects.some((project) => project.id === requestedProject && !project.archived)) {
@@ -196,7 +188,7 @@ export default function Home() {
       setScreen(workspace.projects.length ? "hub" : "create");
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [authLoading, loaded, user, workspace.projects]);
+  }, [loaded, workspace.projects]);
 
   function setWorkspaceLocation(next: "hub" | "create" | "canvas" | "landing", projectId = "", view: "projects" | "people" = hubView) {
     if (typeof window === "undefined") return;

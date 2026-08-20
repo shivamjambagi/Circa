@@ -86,6 +86,7 @@ export type CommunityItem = {
   order: number;
   createdBy?: string;
   createdByName?: string;
+  contentVersion?: number;
   schemaVersion: number;
 };
 
@@ -96,6 +97,7 @@ export type EditProposal = {
   itemId: string;
   operation: "create" | "update" | "delete";
   currentItem?: CommunityItem | null;
+  baseVersion: number;
   proposedItem: Omit<CommunityItem, "id"> | null;
   reason: string;
   status: "pending" | "approved" | "rejected";

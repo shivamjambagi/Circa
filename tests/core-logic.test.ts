@@ -8,9 +8,11 @@ import {
   mergeProjectGraph,
   LocalProjectGraphStore,
   LocalWorkspaceStore,
+  MAX_WORKSPACE_BACKUP_BYTES,
   normalizeGraph,
   normalizeWorkspace,
   parseWorkspaceBackup,
+  readWorkspaceBackupFile,
   serializeWorkspace,
   validPersonName,
 } from "../app/graphStore.ts";
@@ -83,11 +85,58 @@ test("global delete cascades people, threads and manager references across proje
   assert.equal(next.projects[0].graph.relationships.length, 0);
 });
 
+test("deleting an introducer clears attribution without deleting endpoint relationships", () => {
+  const project = createProject("Introductions", "personal");
+  const now = new Date().toISOString(); const base = project.graph.people[0];
+  const introducer = { ...base, id: "introducer", globalId: "global-introducer", name: "Alex", isSelf: false };
+  const maya = { ...base, id: "maya", globalId: "global-maya", name: "Maya", isSelf: false };
+  project.graph.people.push(introducer, maya);
+  project.graph.relationships.push({ id: "edge", sourceId: base.id, targetId: maya.id, type: "friend", label: "Friend", labels: ["Friend"], semantic: "Friend", strength: "normal", direction: "undirected", introducedByPersonId: introducer.id, createdAt: now, updatedAt: now });
+  const workspace = { ...createEmptyWorkspace(), projects: [project], globalPeople: [introducer, maya].map(({ globalId: id, name, nickname, phone, email, githubUrl, linkedinUrl, createdAt, updatedAt }) => ({ id, name, nickname, phone, email, githubUrl, linkedinUrl, createdAt, updatedAt })), activeProjectId: project.id };
+  const next = deleteGlobalPerson(workspace, introducer.globalId);
+  assert.equal(next.projects[0].graph.relationships.length, 1);
+  assert.equal(next.projects[0].graph.relationships[0].introducedByPersonId, "");
+});
+
 test("backup round-trip is normalized", () => {
   const workspace = createEmptyWorkspace();
   const parsed = parseWorkspaceBackup(serializeWorkspace(workspace));
   assert.equal(parsed.version, 3);
   assert.deepEqual(parsed.projects, []);
+});
+
+test("backup files are size-capped before their contents are read", async () => {
+  let read = false;
+  await assert.rejects(() => readWorkspaceBackupFile({ size: MAX_WORKSPACE_BACKUP_BYTES + 1, text: async () => { read = true; return "{}"; } }), /up to 10 MB/);
+  assert.equal(read, false);
+});
+
+test("old workspace shapes and 50-500 person workspaces normalize and round-trip", () => {
+  const oldProject = createProject("Legacy", "personal");
+  const legacy = normalizeWorkspace({ version: 2, revision: 1, projects: [{ ...oldProject, projectMode: undefined, schemaVersion: undefined, graph: { ...oldProject.graph, version: 1 } }], folders: [], activeProjectId: oldProject.id });
+  assert.equal(legacy?.version, 3); assert.equal(legacy?.projects[0].graph.version, 2);
+  for (const count of [50, 100, 250, 500]) {
+    const project = createProject(`Stress ${count}`, "business"); const base = project.graph.people[0];
+    project.graph.people.push(...Array.from({ length: count }, (_, index) => ({ ...base, id: `person-${index}`, globalId: `global-${index}`, name: `Person ${index}`, isSelf: false, x: 100 + index * 3, y: 200 + index * 2 })));
+    const workspace = normalizeWorkspace({ ...createEmptyWorkspace(), projects: [project], folders: [], activeProjectId: project.id });
+    assert.ok(workspace); const restored = parseWorkspaceBackup(serializeWorkspace(workspace!));
+    assert.equal(restored.projects[0].graph.people.filter((person) => !person.isSelf).length, count);
+  }
+});
+
+test("oversized local workspaces fail with actionable quota recovery copy", async () => {
+  const memory = new Map<string, string>();
+  const localStorage = { getItem: (key: string) => memory.get(key) ?? null, setItem: (key: string, value: string) => { memory.set(key, value); }, removeItem: (key: string) => { memory.delete(key); }, clear: () => memory.clear(), key: (index: number) => [...memory.keys()][index] ?? null, get length() { return memory.size; } };
+  const previousWindow = (globalThis as { window?: unknown }).window;
+  (globalThis as { window?: unknown }).window = { localStorage, sessionStorage: localStorage, dispatchEvent() {} };
+  try {
+    const project = createProject("Full", "personal");
+    project.graph.notes = Array.from({ length: 650 }, (_, index) => ({ id: `note-${index}`, text: "x".repeat(8000), color: "yellow" as const, x: index, y: index, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
+    await assert.rejects(() => new LocalWorkspaceStore().saveWorkspace({ ...createEmptyWorkspace(), projects: [project], activeProjectId: project.id }), /too large|local storage is full/i);
+  } finally {
+    if (previousWindow === undefined) delete (globalThis as { window?: unknown }).window;
+    else (globalThis as { window?: unknown }).window = previousWindow;
+  }
 });
 
 test("org layout is deterministic and centers a manager above its subtree", () => {

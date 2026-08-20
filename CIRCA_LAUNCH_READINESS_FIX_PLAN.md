@@ -1,12 +1,12 @@
 # Circa launch-readiness repair plan
 
 Last reviewed: 20 August 2026  
-Authoritative source inspected: local `v17-phase1-hardening` branch at `20fb3e6`  
+Authoritative source inspected: local working tree based on P0.1 checkpoint `47cd786`
 Original input covered: all 100 numbered findings in the supplied launch-readiness audit
 
 ## Decision and release scope
 
-Circa is not ready for an unrestricted public launch today. It has a strong product core, a passing TypeScript check, a passing lint check, a successful direct Vinext production build, and broad deterministic graph/Compose coverage. The remaining work is concentrated in release provenance, Personal-map access and durability, cloud privacy/lifecycle, Firestore invariants, Community and Network edge cases, production operations, and legal transparency.
+All locally resolvable P0 source and stop-ship gates now pass. Circa is still not ready for an unrestricted public cloud launch: the current P0.2–P0.9 work is uncommitted, and production provenance, deploy-console settings, deployed rules/indexes, legal/privacy approval, provider configuration, monitoring, backups and observed rollback evidence require external action. Personal is locally release-capable; cloud experiences remain Beta and disabled from unrestricted launch until those external gates close.
 
 The release decision for messaging is final:
 
@@ -19,37 +19,28 @@ Recommended launch statuses until the gates in this document pass:
 
 | Experience | Status now | Status allowed after P0 |
 | --- | --- | --- |
-| Personal Maps | Blocked by sign-in regression and save/data-loss defects | Live |
-| Community | Private beta only | Beta, then Live after Community gates |
-| Network | Private beta only | Beta until scale and privacy gates pass |
-| Compose/Ask | Local semantic and deterministic Ask are usable; provider route is not production-secure | Live locally; provider-backed Describe only after server gates |
+| Personal Maps | Locally verified account-free and durable; reviewed commit/deployment still required | Live after the production-candidate deployment gate |
+| Community | P0 invariants pass locally; external privacy and production gates remain | Cloud Beta only after external gates, then Live after P1 Community gates |
+| Network | P0 privacy/rules pass locally; external privacy and production gates remain | Cloud Beta until scale, cost and privacy gates pass |
+| Compose/Ask | Local Compose/Ask pass account-free; provider route is secured but stays disabled until processor/App Check configuration | Live locally; provider-backed Describe only after external gates |
 | WhatsApp | Removed from source; production-host cleanup and deployment verification pending | Removed |
 
 ## Evidence from the current repository
 
-The old audit's statement that GitHub was empty is no longer current. The public repository contains source and history. However, release provenance is still incomplete:
-
-- `origin/main` is `4b7455e`.
-- the local hardening branch is `20fb3e6`, five tracked files ahead of `origin/main`, and does not track a remote branch;
-- this repair plan, `MANUAL_EXTERNAL_HARDENING.md`, the removal regression test and `tests/v17-critical-hardening.test.mjs` are currently untracked;
-- misleading V17 installers, verifiers, phase documentation and backup folders were removed from the product tree during P0.1 and preserved in the external historical archive `circa-p0-1-source-archive`;
-- the retained V17 critical suite still has nine failing assertions, all assigned to later P0 workstreams.
+The old audit's statement that GitHub was empty is no longer current. The public repository contains source and history. P0.1 is committed at `47cd786`; P0.2–P0.9 are implemented in the local working tree and must be reviewed, committed and pushed before they can produce a releasable clean artifact. The build records commit plus dirty/clean state in `/release.json`, and CI refuses a dirty artifact.
 
 ### Verification results on 20 August 2026
 
 | Check | Result | Meaning |
 | --- | --- | --- |
-| `node node_modules/typescript/bin/tsc --noEmit` | Pass | Current tracked TypeScript compiles. |
-| direct ESLint over `app`, functions and tests | Pass | No current lint errors. |
-| `node node_modules/vinext/dist/cli.js build` | Pass | Production code can build directly. |
-| `npm run build` | Fail on Windows | The declared build requires `bash`; there is no cross-platform canonical runner. |
-| existing functional/static suite | 146 pass, 0 fail | Personal graph, deterministic Ask, semantic Compose, Community schedules, UI logic and the P0.1 absence gate pass. |
-| V17 critical hardening suite | 2 pass, 9 fail, 0 skipped | Save navigation, introducer deletion, relationship direction, LinkedIn parsing, Compose security, privacy copy, cloud migration, directory IDs and CI remain open for later P0 workstreams. |
-| Firestore emulator suite | 10 pass, 0 fail | Rules and the explicit Network-contribution fixture now agree. |
-| `npm audit --omit=dev` | 0 vulnerabilities | Removing orphaned feature-only server dependencies removed the six former production advisories. |
-| clean build and local production smoke | Pass | `/`, `/start`, and a Community route returned 200; none of their HTML or the clean `dist` contained the removed product name. |
-| bundle inspection | Warning | `FirebaseProvider` chunk is about 667 KB, the main page chunk about 162 KB, and the favicon SVG is 1,021,390 bytes. |
-| CI | Missing | `.github/workflows/ci.yml` and a cross-platform test runner do not exist. |
+| `npm test` | Pass | Cross-platform canonical gate: TypeScript, ESLint, 186/186 functional/static assertions, 15/15 Firestore emulator assertions, production build, 2/2 rendered-route tests and five headless-browser journeys. |
+| missing-Firebase dedicated build | Pass | With `.env.local` temporarily absent, `npm run build` and Personal/Compose-entry browser smoke passed; the file was restored in `finally`. |
+| `node --test tests/v17-critical-hardening.test.mjs` | 11 pass, 0 fail | Every retained P0 stop-ship assertion is green. |
+| `npm run audit:production` | 0 vulnerabilities | Firebase Admin 14.3.0 plus scoped fixed `uuid` overrides remove the transitive moderate advisory; `npm ls` is valid. |
+| `npm run scan:artifact` | Pass | 61 client artifact files contained no server secret patterns or source maps. |
+| runtime/public removed-feature scan | 0 matches | Shipped source, public files, environment template, active docs and build remain free of the removed feature name. |
+| artifact provenance | Local pass / external open | `/release.json` records `47cd786` and `dirty: true`; a clean reviewed commit and production deploy remain required. |
+| CI and controlled rules release source | Implemented / external open | GitHub workflows include release gate, secret/dependency/artifact scans and a workload-identity Firestore release job; remote execution/protection is not yet evidenced. |
 
 ## Definition of launch-ready
 
@@ -134,7 +125,9 @@ Acceptance gates:
 
 ### P0.2 — restore genuinely account-free Personal Maps
 
-Current defect: `Landing` sends signed-out users to `/auth?returnTo=/start`, `/start` requires a permanent account, and `/?workspace=1` redirects to Auth. In addition, `app/firebase/client.ts` requires all Firebase variables at module evaluation while `FirebaseProvider` wraps the entire app. A Personal-only visitor therefore still depends on cloud configuration.
+**Status: COMPLETE AND VERIFIED LOCALLY.** `app/layout.tsx` no longer starts Firebase globally; cloud routes opt in through route layouts, Firebase configuration is lazy, and every Personal entry opens `/?workspace=1` without authentication. A dedicated production build with `.env.local` absent passed, followed by headless-browser Personal and browser-local Compose-entry smoke. Signing out clears cloud cache without deleting Personal LocalStorage. Production publication still depends on the P0.7 reviewed-commit gate.
+
+Original defect (resolved locally): `Landing` sent signed-out users to `/auth?returnTo=/start`, `/start` required a permanent account, and `/?workspace=1` redirected to Auth. In addition, `app/firebase/client.ts` required all Firebase variables at module evaluation while `FirebaseProvider` wrapped the entire app.
 
 Required changes:
 
@@ -156,7 +149,9 @@ Acceptance gates:
 
 ### P0.3 — eliminate known Personal data-loss paths
 
-Current defects proven by the failing V17 suite:
+**Status: COMPLETE AND VERIFIED LOCALLY.** Failed saves now block navigation behind Stay/Export/Retry recovery; quota preflight, recovery/corruption copies, backup reminders, restore caps and explicit stale-tab choices are present. Introducer deletion preserves relationship endpoints, directed reconnection reorients endpoints, and 50/100/250/500-person plus old-schema round trips pass. Evidence: `tests/p0-personal-durability.test.mjs`, `tests/core-logic.test.ts`, the P0 stop-ship suite and the Personal browser smoke in `npm test`.
+
+Original defects (now covered by passing V17/P0 regressions):
 
 - `performSave` catches and resolves a failed write, `flushPendingSave` swallows it, and Done/project-switch/new-project navigation proceeds;
 - deleting a person who was only the introducer deletes the entire endpoint relationship in both `deleteGlobalPerson` and `SketchCanvas.deleteNow`;
@@ -176,7 +171,9 @@ Acceptance gates: the nine V17 hardening assertions relevant to Personal pass, q
 
 ### P0.4 — remove or finish the broken cloud migration feature
 
-Current defect: `CloudMigrationCard` is public UI, but its marker and workspace paths are denied by current Firestore rules, the owner membership payload lacks `consented: true`, the migration has no retriable state machine, and folders/global people are not copied to readable cloud collections. The product also has no complete cloud-map open/restore/export/delete experience.
+**Status: COMPLETE AND VERIFIED LOCALLY using option 1.** The public cloud-copy card, migration implementation, styles, imports and active documentation claims were removed. Personal is explicitly browser-local and no build/runtime cloud-migration surface remains. Evidence: the migration-absence P0 assertion, 186/186 functional/static tests and the production build.
+
+Original defect (resolved by removal): `CloudMigrationCard` was public UI, but its marker and workspace paths were denied by Firestore rules, the migration had no retriable state machine, and the product had no complete cloud-map open/restore/export/delete experience.
 
 Choose one safe launch option:
 
@@ -187,7 +184,9 @@ Never ship a “Cloud copy ready” status for data the user cannot reopen, veri
 
 ### P0.5 — re-establish Community publication invariants
 
-Current rule `lists/{listId}/items/{itemId}` permits a member to delete an approved record when `createdBy` matches their UID. The UI exposes “Delete my information.” This contradicts the product invariant that members propose and admins publish.
+**Status: COMPLETE AND VERIFIED LOCALLY; REQUIRES EXTERNAL ACTION for production rules/index deployment and production two-user smoke.** Member create/update/delete is proposal-only; review uses immutable provenance, exact base/version, server review time and moderation events; removed-member rejoin, idempotent membership, owner preservation and explicit ownership transfer are implemented. Raw join-code reads are denied and redemption/creation use authenticated, shared-rate-limited server boundaries with cryptographic collision checks. Evidence: 15/15 emulator assertions plus `tests/p0-community-invariants.test.mjs`. Deploy the reviewed `firestore.rules`/indexes and verify hashes before enabling cloud Beta.
+
+Original defect (resolved locally): `lists/{listId}/items/{itemId}` permitted a member to delete an approved record when `createdBy` matched their UID and the UI exposed a direct delete action, contradicting proposal-only publication.
 
 Required changes:
 
@@ -207,9 +206,11 @@ Acceptance gates: adversarial emulator tests cover cross-project reads, role esc
 
 ### P0.6 — secure provider-backed Compose without breaking local Compose
 
-Current strengths: provider context drops phone, email and notes; graph context is bounded; semantic output is validated; mutation requires review; deterministic Ask is well tested.
+**Status: COMPLETE AND VERIFIED LOCALLY; REQUIRES EXTERNAL ACTION before enabling a production provider.** Browser-local Compose/Paste/CSV/Ask remain account-free. External Describe is explicit opt-in and requires a permanent verified Firebase session, supports App Check enforcement, uses shared UID plus HMAC-signal limiting, enforces streamed request/response caps and timeout/abort, treats context as untrusted data and exposes only reduced context. Evidence: `tests/p0-compose-security.test.mjs`, `tests/server-request-limits.test.ts`, functional/static tests and Compose browser smoke. The provider must remain disabled until its identity, contract, region/retention and production App Check metrics/enforcement are recorded.
 
-Current defects: `POST /api/compose` is unauthenticated, rate limits live in an instance-local `Map`, `content-length` can be absent, and the UI does not clearly distinguish browser-only parsing from server processing.
+Retained strengths: provider context drops phone, email and notes; graph context is bounded; semantic output is validated; mutation requires review; deterministic Ask is well tested.
+
+Original defects (resolved locally): `POST /api/compose` was unauthenticated, rate limits lived in an instance-local `Map`, request size trusted `content-length`, and the UI did not distinguish browser-only parsing from server processing.
 
 Required design:
 
@@ -225,6 +226,8 @@ Required design:
 
 ### P0.7 — create a reproducible release chain
 
+**Status: COMPLETE AND VERIFIED LOCALLY; REQUIRES EXTERNAL ACTION for remote CI, branch protection, deploy preview, clean production deployment and rollback drill.** Netlify is canonical; alternative D1/R2 runtime/example scaffolding is removed and the retained Cloudflare package is documented as build-time Fetch-worker bundling only. Cross-platform Node runners automatically discover tests, allocate collision-resistant emulator ports, build/validate the artifact and run real Chrome smoke. `/release.json` records commit and working-tree state; CI rejects dirty artifacts. `npm test` passes on Windows. GitHub release and controlled Firestore workflows, release/rollback documentation and artifact scanning are checked in locally but not yet run on a pushed reviewed commit.
+
 Required changes:
 
 - choose one canonical hosting architecture and remove or clearly isolate unused Cloudflare/D1/example scaffolding;
@@ -239,6 +242,8 @@ Required changes:
 - do not commit `.v17-*` backup folders, private seed data, local environment files, generated build output, or one-off installers.
 
 ### P0.8 — finish privacy, account lifecycle and user control before cloud launch
+
+**Status: LOCALLY IMPLEMENTED AND TESTED; REQUIRES EXTERNAL ACTION and remains an unrestricted-cloud stop-ship blocker.** Public versioned Privacy, Terms and Help routes, global links, data/storage map, 18+ initial scope, no-sensitive-inference rule, cloud export, recent-auth account deletion, leave, contribution withdrawal, ownership transfer and confirmed recursive owned-space deletion are implemented. Analytics is absent. Evidence: `tests/p0-privacy-lifecycle.test.mjs` and the complete local gate. Still required: controller/contact details, lawful-basis/legitimate-interest decisions, processor/region/transfer contracts, retention/TTL jobs, rights-request exercises, signed DPIA/Children's Code decision and qualified UK legal/privacy approval. See `docs/PRIVACY_RELEASE_GATES.md`.
 
 Required product/data decisions:
 
@@ -257,6 +262,8 @@ Required product/data decisions:
 Useful current official guidance: [ICO privacy information](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/individual-rights/the-right-to-be-informed/what-privacy-information-should-we-provide/), [storage and access technologies](https://ico.org.uk/for-organisations/direct-marketing-and-privacy-and-electronic-communications/guidance-on-the-use-of-storage-and-access-technologies/what-are-storage-and-access-technologies/), [Children's Code coverage](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/childrens-information/childrens-code-guidance-and-resources/age-appropriate-design-a-code-of-practice-for-online-services/services-covered-by-this-code/), and [DPIAs](https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/accountability-and-governance/data-protection-impact-assessments-dpias/).
 
 ### P0.9 — production security and operational baseline
+
+**Status: LOCALLY IMPLEMENTED AND TESTED; REQUIRES EXTERNAL ACTION for production operation.** CSP/HSTS/nosniff/frame/referrer/permissions/COOP headers, offline/Firebase timeout/retry, 404/error boundaries, cloud-cache clearing on sign-out, redacted server failure IDs, secret/dependency/artifact CI scans, a controlled workload-identity rules job and operations/rollback runbooks are present. `npm run audit:production` reports 0 vulnerabilities and the client artifact scan reports no server secrets/source maps. Still required: production Auth domains/reset/Google flows, App Check metrics/enforcement, monitoring vendor/alerts, backup/export/TTL jobs, workload identity/environment setup, owner assignments, secret rotation, deployed rules hashes, two-user production smoke and observed rollback/restore drills.
 
 - add and test CSP, HSTS, `X-Content-Type-Options`, `frame-ancestors`, Referrer Policy and Permissions Policy without breaking Firebase/App Check;
 - add secret scanning and dependency scanning in CI; confirm only `.env.example` is tracked and rotate anything ever exposed;
@@ -464,52 +471,52 @@ Status is the state of the current local source, not a claim about a future inst
 | # | Audit finding | Current disposition | Required package / gate |
 | ---: | --- | --- | --- |
 | 1 | GitHub source-of-truth repository is empty | Historical statement is resolved: the public repository now has source and history; local changes still are not on the canonical remote. | P0.7 canonical branch and commit provenance |
-| 2 | Cannot prove which source produced Netlify | Open | P0.7 immutable commit-to-deployment evidence |
-| 3 | Personal Circa appears to require sign-in | Confirmed regression | P0.2 account-free Personal acceptance |
-| 4 | Production is not tied to a passed acceptance suite | Open | P0.7 CI and complete acceptance gate |
-| 5 | Firestore production rules deployment unverified | External verification required; local emulator suite is also not fully green. | P0.5 and P0.9 rules hash plus adversarial emulator suite |
+| 2 | Cannot prove which source produced Netlify | Locally addressed by commit/dirty release metadata; production deployment provenance requires external verification. | P0.7 clean reviewed commit and Netlify evidence |
+| 3 | Personal Circa appears to require sign-in | Resolved and browser-tested locally, including a missing-Firebase build. | Keep P0.2 account-free regression gate |
+| 4 | Production is not tied to a passed acceptance suite | CI/release-gate source is implemented and the canonical suite passes locally; remote required-check evidence is external. | P0.7 remote CI/protection gate |
+| 5 | Firestore production rules deployment unverified | 15/15 adversarial emulator tests pass locally; deployed hashes and two-user smoke remain external. | P0.5/P0.9 controlled deploy evidence |
 | 6 | App Check production enforcement unverified | External verification required | P0.6/P0.9 monitoring-first enforcement record |
-| 7 | Public Privacy information undiscoverable | Open | P0.8 notice and global navigation |
-| 8 | Third-party people data needs a privacy model | Open | P0.8 data map, lawful basis, rights and retention |
-| 9 | School use creates under-18 considerations | Product/legal decision required | P0.8 age scope and Children's Code screen |
-| 10 | Public product advertises unclear features | Open; removed messaging copy is part of this mismatch. | P0.1 plus explicit product-status copy |
-| 11 | LocalStorage creates data-loss risk | Partly mitigated by migrations/restore/stale-tab code; known save-loss and recovery gaps remain. | P0.3 durability matrix and stress tests |
-| 12 | No verified production rollback path | Open | P0.7/P0.9 rollback drill |
+| 7 | Public Privacy information undiscoverable | Resolved locally with versioned public routes and global navigation; production publication remains external. | Keep P0.8 route/navigation gate |
+| 8 | Third-party people data needs a privacy model | Data map, visibility, export/deletion and retention targets documented; lawful basis, contracts and rights exercises remain external. | P0.8 external privacy gates |
+| 9 | School use creates under-18 considerations | Cloud Beta is scoped 18+; school marketing remains disabled pending external Children's Code assessment. | P0.8 external legal decision |
+| 10 | Public product advertises unclear features | Resolved locally: Personal is local-first and Community/Network are labelled Cloud Beta; removed-feature copy is absent. | Keep status/absence regression gates |
+| 11 | LocalStorage creates data-loss risk | P0 durability paths are resolved locally with recovery, quota, corruption, backup, size and 50–500-person tests. | Keep P0.3 durability regressions; P1 device matrices remain |
+| 12 | No verified production rollback path | Runbook and immutable-artifact procedure implemented; observed production rollback remains external. | P0.7/P0.9 rollback drill |
 | 13 | Auth protection duplicated by screen | Open | P1.3 shared route/access model |
-| 14 | Auth loading needs a failure timeout | Open | P1.3/P0.9 timeout, retry and visible failure state |
+| 14 | Auth loading needs a failure timeout | Resolved locally with a bounded unavailable/retry/Personal state. | Keep P0.9 regression; broader P1.3 auth matrix remains |
 | 15 | Auth edge cases need production testing | Open | P1.3 E2E matrix |
 | 16 | Anonymous-to-permanent upgrade must preserve identity | Upgrade code exists, but current Community join does not use the anonymous session path. | P1.3 choose and test one coherent policy |
 | 17 | `returnTo` must allow safe internal routes only | Resolved in current code and covered by local tests | Keep security regression gate |
-| 18 | Account deletion/export/leave flows | Open | P0.8/P1.3 lifecycle implementation and proof |
-| 19 | Logout local-cache privacy review | Open | P0.9 shared-device policy and test |
+| 18 | Account deletion/export/leave flows | Implemented and statically/functionally tested locally; production representative-user exercise remains external. | P0.8 external rights/lifecycle evidence |
+| 19 | Logout local-cache privacy review | Resolved locally: cloud persistence is terminated/cleared while Personal LocalStorage is preserved. | Keep P0.9 shared-device regression |
 | 20 | Supplied Community URL cannot be independently assessed without client boot | Partially architectural; loading/error/empty/offline states remain incomplete. | P1.1 browser E2E and failure-state gates |
-| 21 | Community project URLs and invitation URLs must differ | Mostly resolved by separate routes; deployed behaviour still needs E2E proof. | P0.5 URL/invite acceptance |
-| 22 | Join-code brute-force protection | Open; lookup is public and has no shared limiter. | P0.5 server redemption, collision and rate-limit tests |
+| 21 | Community project URLs and invitation URLs must differ | Resolved locally with separate routes, consent and permanent-account flow; deployed proof remains external. | P0.5 production E2E |
+| 22 | Join-code brute-force protection | Resolved locally with server-only redemption and shared HMAC rate limiting. | Keep P0.5 server/rules regressions |
 | 23 | Invite creation must use secure randomness | Resolved in current code | Keep deterministic security test |
-| 24 | Joining must be idempotent | Active membership is substantially handled; removed-member rejoin is broken. | P0.5 membership-state matrix |
+| 24 | Joining must be idempotent | Resolved locally for duplicate/retry and removed-member rejoin through current invites. | Keep P0.5 membership matrix |
 | 25 | Owner role preservation | Locally rule-tested; production deployment still must be proven. | P0.5/P0.9 emulator and rules-hash gate |
-| 26 | Moderation must be enforced in Firestore | Confirmed open: member direct-delete contradicts the invariant. | P0.5 proposal-only mutation rules |
+| 26 | Moderation must be enforced in Firestore | Resolved locally: member direct mutation/deletion is denied and proposal review is versioned/audited. | Keep P0.5 adversarial rules gate |
 | 27 | Pending information must not leak into Ask or messaging | Community Ask currently consumes published data only; messaging is being removed. | P0.1 and keep published-only regression test |
 | 28 | Community time and recurrence need DST testing | Bin logic has useful DST coverage; reminder scheduling/recurrence is not real. | P1.1 scheduler and timezone matrix |
-| 29 | Community ownership deletion policy | Open | P0.5/P0.8 transfer, archive, delete and retention policy |
-| 30 | Moderation/audit history for Communities | Partial proposal records exist; immutable reviewer/audit constraints are incomplete. | P0.5 strict audit schema and retention |
+| 29 | Community ownership deletion policy | Transfer and exact-name confirmed recursive deletion are implemented; retention/production exercise remains external. | P0.5/P0.8 production lifecycle gate |
+| 30 | Moderation/audit history for Communities | Immutable reviewer/provenance and minimal moderation events implemented locally; production retention job remains external. | P0.5/P0.8 retention gate |
 | 31 | Imported professional data private by default | Resolved locally by default privacy rules | Keep adversarial privacy test |
-| 32 | Network contribution explicit and reversible | Substantially improved; one rules fixture disagrees and production is unverified. | P1.2/P0.9 revocation and deployed-rules proof |
+| 32 | Network contribution explicit and reversible | Resolved locally and emulator-tested; deployed-rules/revocation proof remains external. | P0.9 production proof plus P1.2 scale gates |
 | 33 | Identity must not merge by name | Resolved and tested | Keep identity regression gate |
 | 34 | Cross-user identity linking needs deterministic evidence | Partial: URL digest evidence exists; privacy model and collision/keying review remain. | P1.2 identity-evidence design and adversarial tests |
 | 35 | Pathfinding must not silently stop at a query limit | Partial: contribution queries paginate, but UI and contributor limits remain. | P1.2 completeness metadata and no-silent-truncation tests |
 | 36 | Network cannot download every connection forever | Open scalability issue | P1.2 server-side/projection architecture and cost budgets |
 | 37 | No inferred professional relationships | Resolved and tested | Keep no-inference gate |
 | 38 | LinkedIn stays export-file import, not scraping | Resolved by current product model | Keep copy and implementation constraint |
-| 39 | CSV importer hostile/large-file tests | Open gaps: malformed quotes, URL validation and 10k-row cap. | P1.2 parser hardening and resource-budget matrix |
+| 39 | CSV importer hostile/large-file tests | P0 resource/hostile gaps resolved locally: 8 MB, 10k rows, malformed quotes and profile-only LinkedIn URLs; performance/streaming remains P1. | P1.2 resource-performance matrix |
 | 40 | Path results describe only known facts | Resolved in current wording/tests | Keep semantics regression gate |
 | 41 | AI output never directly mutates graph | Resolved: review/apply boundary exists and is tested. | Keep Apply-only mutation gate |
-| 42 | Strict AI response schema validation | Implemented locally but provider boundary still needs full hostile-response coverage. | P0.6 schema/size/timeout tests |
+| 42 | Strict AI response schema validation | Resolved locally with bounded streaming, object/schema validation and hostile response tests. | Keep P0.6 server-limit regression |
 | 43 | Compose ambiguity must ask, not guess | Resolved across broad local tests | Keep ambiguity corpus |
-| 44 | Prompt/context privacy minimisation | Mostly implemented for graph fields; disclosure and provider E2E proof remain. | P0.6 payload assertion and privacy copy |
-| 45 | Prompt injection through content | Partial protections; adversarial corpus incomplete. | P0.6 hostile-input suite |
-| 46 | AI request limits | Confirmed open in production terms | P0.6 shared rate, byte, response and timeout limits |
-| 47 | AI-provider failure cannot stop core Circa | Local fallbacks exist; browser/E2E proof is still needed. | P0.6 provider-outage acceptance |
+| 44 | Prompt/context privacy minimisation | Reduced-field payload and exact server/browser disclosure are locally tested; provider contract/production E2E remains external. | P0.6/P0.8 external provider gate |
+| 45 | Prompt injection through content | P0 data delimiters and hostile-input/authoritative-validation tests pass locally. | Keep P0.6 adversarial corpus |
+| 46 | AI request limits | Resolved locally with shared rate, streamed request/response caps and timeout/abort. | P0.6 production datastore/App Check verification |
+| 47 | AI-provider failure cannot stop core Circa | Resolved locally: provider use is optional and browser-local Compose/Ask remain operational and browser-tested. | Keep P0.6 outage regression |
 | 48 | ASK remains deterministic | Resolved and tested | Keep deterministic, provider-free gate |
 | 49 | Establish whether WhatsApp is live | Source/runtime implementation removed and locally verified; deployed Netlify/provider state remains externally unverified. | Close P0.1 only after production endpoint/provider evidence |
 | 50 | Meta credentials server-side | Local environment template and production dependency removed; hosted secret deletion/token revocation remains external. | P0.1 Netlify/provider cleanup |
@@ -518,21 +525,21 @@ Status is the state of the current local source, not a claim about a future inst
 | 53 | STOP/disconnect/preferences behaviour | Resolved in source by removing the controls, fields, routes and documentation. | Keep source/build absence regression |
 | 54 | Scheduled reminders are idempotent | Removed delivery scheduler and index; retained in-app reminder truthfulness remains P1.1. | P1.1 in-app scheduler gate |
 | 55 | Messaging answers use approved Community data only | Resolved by deleting the answer/delivery runtime and its tests. | Keep source/build absence regression |
-| 56 | Security headers audited | Open | P0.9 CSP and header verification |
-| 57 | Frontend bundles checked for secrets | Partial source hygiene only; no CI bundle scan. | P0.9 secret/source-map/bundle scan |
-| 58 | App Check is not rate limiting | Open for provider-backed Compose and public mutations. | P0.6/P0.9 shared limiter plus App Check policy |
-| 59 | Cross-project isolation adversarial testing | Partial emulator coverage; expand and make fully green. | P0.5/P1.2 hostile rules matrix |
-| 60 | Dependency scanning in CI | CI remains open; the current production audit is clean after P0.1 removed orphaned server dependencies. | P0.9 automated CI audit gate |
-| 61 | Firestore and LocalStorage versioned migration tests | Local migration coverage is useful; cloud migration is broken. | P0.3/P0.4 migration fixtures and rollback |
-| 62 | Multi-tab conflict handling | Partially handled for local storage; cloud/race/browser coverage remains. | P0.3/P1.1 concurrency matrix |
-| 63 | Firestore transaction/race review | Partial transactional code exists; membership, invite and proposal races remain. | P0.5/P1.1 concurrency and stale-base tests |
-| 64 | Cloud backup/restore policy | Open | P0.9 backup ownership, retention and restore drill |
-| 65 | Destructive confirmation and cleanup | Open defects include introducer edges and non-cascading project deletion. | P0.3/P0.5 confirmation, cascade and recovery tests |
-| 66 | Build scripts are platform-dependent | Confirmed: `npm run build` fails on Windows because it invokes Bash. | P0.7 cross-platform scripts |
-| 67 | Linux CI pipeline | Open | P0.7 required CI workflow |
-| 68 | Production deploys a known commit | Open | P0.7 immutable SHA and artifact provenance |
-| 69 | Preview deployments before production | Open | P0.7 preview smoke and approval gate |
-| 70 | Real browser E2E tests | Open | P0.7 Playwright-equivalent critical journeys |
+| 56 | Security headers audited | Required headers are source-configured and statically tested; production-origin inspection remains external. | P0.9 production header verification |
+| 57 | Frontend bundles checked for secrets | Resolved locally with client artifact/source-map scan and CI secret scan; remote CI run remains external. | Keep P0.9 scan gate |
+| 58 | App Check is not rate limiting | Shared server rate limiting is implemented; production App Check metrics/enforcement remain external. | P0.6/P0.9 external enforcement record |
+| 59 | Cross-project isolation adversarial testing | 15/15 Community/Network emulator assertions pass locally. | Keep P0.5 hostile rules matrix; P1 scale cases remain |
+| 60 | Dependency scanning in CI | Workflow gate implemented locally; production audit reports 0 vulnerabilities. Remote CI execution remains external. | P0.9 remote CI evidence |
+| 61 | Firestore and LocalStorage versioned migration tests | Personal old-schema/size fixtures pass and the incomplete cloud migration is removed. | Keep P0.3/P0.4 regression gates |
+| 62 | Multi-tab conflict handling | Personal stale-tab overwrite/discard handling is explicit and tested; cloud race/browser coverage remains P1. | P1.1 concurrency matrix |
+| 63 | Firestore transaction/race review | P0 invite/membership/proposal stale-base invariants are transactional and tested; wider P1 races remain. | P1.1 concurrency expansion |
+| 64 | Cloud backup/restore policy | Ownership, daily/35-day target and drill procedure documented; production job and observed restore remain external. | P0.9 external backup gate |
+| 65 | Destructive confirmation and cleanup | P0 introducer, workspace recovery and recursive owned-space deletion paths are resolved locally. | Keep P0 regressions; P1 scheduled cleanup remains |
+| 66 | Build scripts are platform-dependent | Resolved: cross-platform Node build/test runners pass on Windows and CI targets Linux. | Keep P0.7 canonical gate |
+| 67 | Linux CI pipeline | Workflow source implemented; first successful protected-branch run remains external. | P0.7 remote CI evidence |
+| 68 | Production deploys a known commit | Artifact commit plus dirty/clean metadata implemented; clean reviewed production deploy remains external. | P0.7 immutable deploy evidence |
+| 69 | Preview deployments before production | Preview requirement/runbook implemented; actual Netlify preview and approval remain external. | P0.7 external preview gate |
+| 70 | Real browser E2E tests | Resolved locally for Personal, Auth, Community, Network and Compose entry using real headless Chrome. | Keep P0.7 browser gate |
 | 71 | Mobile real-device validation | Open | P1.4 signed device/browser matrix |
 | 72 | Canvas touch gesture conflicts | Touch controls exist but need device proof. | P1.4 pan/zoom/draw/scroll tests |
 | 73 | Complete keyboard accessibility pass | Partial | P1.4 keyboard-only acceptance |
@@ -540,27 +547,27 @@ Status is the state of the current local source, not a claim about a future inst
 | 75 | Reduced motion respected | Implemented in CSS; verify all animated interactions. | P1.4 reduced-motion browser gate |
 | 76 | Meaning not dependent on colour | Partial/open | P1.4 contrast, icon, text and state audit |
 | 77 | 320–360px screens | Responsive rules exist; real layout acceptance is missing. | P1.4 narrow-screen matrix |
-| 78 | Large Personal maps stress-tested | Open; also coupled to save/recovery risk. | P0.3/P1.4 size, latency and memory budgets |
+| 78 | Large Personal maps stress-tested | 50/100/250/500-person normalize/round-trip fixtures pass; signed device latency/memory budgets remain P1. | P1.4 performance matrix |
 | 79 | Large CSV memory/performance limits | Partial 15 MB file limit only; row and parsing budgets are missing. | P1.2 streamed/bounded import gate |
 | 80 | Firebase query cost monitoring | Open | P1.5 budgets, dashboards and alerts |
-| 81 | AI context remains bounded | Implemented with people/relationship caps; test and monitor the budget. | P0.6 bounded-payload assertion |
-| 82 | Frontend bundle and Firebase startup measured | Open problem: eager global Firebase and an approximately 667 KB Firebase client chunk. | P0.2/P1.5 lazy loading and bundle budgets |
-| 83 | Real production error monitoring | Open | P0.9 redacted client/function monitoring and alerts |
-| 84 | Important failures have a user-facing state | Partial/open across listeners, imports, auth and server actions. | P0.9/P1.1/P1.2 error-state inventory and tests |
-| 85 | Proper 404/not-found behaviour | Open | P0.9 not-found and global error boundaries |
+| 81 | AI context remains bounded | Implemented and tested with people/relationship/payload caps. | Keep P0.6 bounded-payload assertion |
+| 82 | Frontend bundle and Firebase startup measured | Eager global Firebase is removed; cloud providers are route-scoped and missing-config Personal builds pass. Wider bundle budgets remain P1. | P1.5 bundle budgets |
+| 83 | Real production error monitoring | Privacy-bounded structured failure hooks/request IDs implemented; monitoring vendor, retention and alerts remain external. | P0.9 external monitoring gate |
+| 84 | Important failures have a user-facing state | P0 offline, Firebase timeout/unavailable, save, error-boundary and server-request states are implemented; P1 listener/import completeness remains. | P1.1/P1.2 inventory |
+| 85 | Proper 404/not-found behaviour | Resolved locally with not-found, route error and global error boundaries. | Keep P0.9 rendered/browser gate |
 | 86 | Feature-level kill switches | Open | P1.5 safe server-controlled flags and runbook |
-| 87 | Privacy Notice before cloud launch | Open | P0.8 published, versioned notice |
-| 88 | Cookie/storage technology audit | Open | P0.8 storage inventory, consent decision and documentation |
-| 89 | Retention schedule | Open | P0.8 record-level schedule and deletion jobs |
-| 90 | Data export and deletion handling | Open | P0.8/P1.3 self-service and support process |
+| 87 | Privacy Notice before cloud launch | Versioned public source implemented; controller details, legal approval and production publication remain external. | P0.8 external notice gate |
+| 88 | Cookie/storage technology audit | Storage inventory and no-Analytics decision documented; qualified assessment/production verification remains external. | P0.8 external storage gate |
+| 89 | Retention schedule | Record-level targets documented; TTL/deletion/backup jobs and evidence remain external. | P0.8/P0.9 external jobs |
+| 90 | Data export and deletion handling | Self-service source implemented and tested; representative rights exercise/support process remains external. | P0.8 external rights gate |
 | 91 | DPIA before higher-risk expansion | Decision/screen required, especially for Network, schools and non-user data. | P0.8 documented DPIA decision and completed DPIA if indicated |
-| 92 | Do not infer sensitive characteristics | Current product rule is aligned; preserve with tests and policy. | P0.8 ongoing no-inference gate |
-| 93 | “Open Circa” versus “Sign in” miscommunicates architecture | Confirmed by the Personal sign-in regression. | P0.2 account-free routing and accurate copy |
+| 92 | Do not infer sensitive characteristics | Resolved as an explicit product/prompt/data-map invariant with regression coverage. | Keep P0.8 ongoing no-inference gate |
+| 93 | “Open Circa” versus “Sign in” miscommunicates architecture | Resolved locally: Open Circa enters Personal; Sign in is explicit for cloud routes. | Keep P0.2 route/copy gate |
 | 94 | `/join` identifies a Community invitation | Resolved: the current join client is Community-specific and contextual. | Keep route/copy regression test |
-| 95 | Product statuses explicit | Open beyond internal planning | Decision table must be reflected in public UI and release notes |
+| 95 | Product statuses explicit | Personal local-first and Community/Network Cloud Beta status are reflected in public UI/docs. | Keep release-copy review |
 | 96 | Beta label includes feedback path | Open | P2 feedback/report flow with privacy handling |
 | 97 | Community shared-link presentation | Open | P2 metadata, branded states and invite-safe previews |
-| 98 | Public footer/legal navigation | Open | P0.8/P2 Privacy, Terms, Help, Status and contact links |
+| 98 | Public footer/legal navigation | Privacy, Terms and Help links are implemented; production support/status/contact destinations remain external/P2. | P0.8 external contact plus P2 status |
 | 99 | Custom domain before broad launch | External launch task | P2 DNS, TLS, redirects and monitoring |
 | 100 | Metadata/social previews verified | Partial metadata only; no complete social image and favicon is oversized. | P1.5/P2 metadata, asset and share-preview matrix |
 
@@ -570,16 +577,27 @@ Do not launch if any P0 item below is unchecked. A checked box must link to its 
 
 ### P0 release blockers
 
-- [ ] Removed messaging has zero runtime, UI, copy, configuration, provider, stored-token, scheduled-job, documentation, secret-scan or deployed-endpoint surface.
-- [ ] Personal Maps opens, edits, saves, exports and restores without an account and without Firebase configuration or network access.
-- [ ] Save failure blocks navigation and provides retry/export recovery; introducer deletion and directed-edge updates pass regression tests.
-- [ ] Cloud migration is either absent/disabled everywhere or complete, consented, rule-compatible, restartable, verified and reversible.
-- [ ] Community proposal-only publication, join/rejoin, owner preservation, invite limiting and isolation all pass the emulator and browser suites.
-- [ ] Provider-backed Compose has permanent authentication, shared throttling, streamed byte/response limits, timeout/abort, minimal payloads and accurate disclosure; local Compose/Ask remains account-free.
-- [ ] One cross-platform command passes typecheck, lint, every unit/integration/static test, Firestore emulator tests, production build and browser E2E in CI.
-- [ ] The release artifact maps to one reviewed commit; preview, production configuration, rules and indexes match; rollback is rehearsed.
-- [ ] Privacy Notice, storage audit, data map, retention, export/deletion/leave, non-user data handling, age decision and DPIA decision are complete and reviewed by qualified UK counsel/DPO support.
-- [ ] Security headers, secret/bundle scan, dependency decision, production monitoring, cache/logout policy, backup/restore and incident ownership are verified.
+Locally completed and verified:
+
+- [x] Runtime/public source, configuration, active docs and artifact contain no removed-feature surface; production/provider cleanup stays in the external list below.
+- [x] Personal opens, edits, saves, exports and restores without an account; a production build and browser smoke pass with Firebase configuration absent.
+- [x] Save failure blocks navigation with Stay/Export/Retry; introducer deletion, direction updates, quota/corruption/recovery and 50–500-person fixtures pass.
+- [x] The incomplete Personal cloud migration is absent from runtime, UI and active documentation.
+- [x] Community proposal-only publication, join/rejoin, owner preservation, invite limiting and cross-project isolation pass 15/15 emulator tests and local browser/static gates.
+- [x] Provider-backed Compose has permanent authentication, App Check readiness, shared throttling, streamed byte/response limits, timeout/abort, minimal payloads and accurate disclosure; local Compose/Ask remains account-free.
+- [x] One cross-platform `npm test` passes TypeScript, ESLint, all 186 functional/static assertions, 15 emulator assertions, the production build, rendered-route checks and five real-browser journeys.
+- [x] The local production artifact validates, records commit plus dirty/clean state, and its 61 client files pass the secret/source-map scan; the production dependency audit reports 0 vulnerabilities.
+- [x] Public privacy/help/terms source, storage/data maps, local lifecycle controls, security headers, 404/error/offline states, cache/logout policy, redacted failure hooks and operational runbooks are implemented and tested.
+
+REQUIRES EXTERNAL ACTION before unrestricted public/cloud launch:
+
+- [ ] Review, commit and push P0.2–P0.9; require the remote CI workflow on protected `main` and produce a clean (`dirty: false`) reviewed artifact.
+- [ ] Verify Netlify protected-branch/preview/production configuration, remove any obsolete hosted endpoints/secrets, and disconnect/revoke the former provider application credentials.
+- [ ] Configure workload identity, deploy the reviewed Firestore rules/indexes, record their hashes, and pass two-isolated-user production Community/Network/lifecycle smoke.
+- [ ] Configure and prove Firebase Auth domains, email/Google/reset flows and App Check metrics/enforcement on every production/preview origin.
+- [ ] Name and contract the optional AI processor, approve its purpose/region/retention, and leave provider-backed Describe disabled until that record and production test exist.
+- [ ] Publish controller/operator identity and contacts; approve lawful bases, contracts/transfers, retention, non-user rights handling, 18+/Children's Code scope and a signed DPIA with qualified UK privacy/legal support.
+- [ ] Configure TTL/deletion and managed backup jobs; assign product/security/privacy/incident owners; configure redacted monitoring/alerts/status/support; rotate exposed secrets; observe rollback and isolated restore drills.
 
 ### Experience gates
 
@@ -598,4 +616,4 @@ Do not launch if any P0 item below is unchecked. A checked box must link to its 
 
 ## Completion rule
 
-This document is the master repair scope, not evidence that the repairs have already been applied. Circa becomes launch-ready only when the acceptance evidence is attached to every applicable gate, the deployed product matches the reviewed commit, and every P0 checkbox is complete.
+This document is the master repair scope and local evidence ledger. Checked local gates are implemented in the working tree and verified by the commands recorded above; they are not evidence of production configuration. Circa becomes launch-ready only after P0.2–P0.9 are reviewed/committed, the deployed product and rules match that clean commit, and every external P0 checkbox is evidenced by its accountable owner.

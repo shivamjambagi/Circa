@@ -11,9 +11,11 @@ test("private seed data is ignored by git", () => {
   assert.match(gitignore, /\/seed-data\//);
 });
 
-test("directory import uses deterministic seeded document ids", () => {
+test("directory import uses deterministic collision-resistant document ids", () => {
   assert.match(repository, /export async function importPublishedDirectoryItems/);
-  assert.match(repository, /directory-\$\{key\}/);
+  assert.match(repository, /directory-\$\{id\}/);
+  assert.match(repository, /importIdentityHash/);
+  assert.match(repository, /crypto\.subtle\.digest\("SHA-256"/);
   assert.match(repository, /batch\.set/);
 });
 

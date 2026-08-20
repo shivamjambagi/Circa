@@ -68,6 +68,7 @@ test("removed messaging runtime and public surface stay absent", () => {
   assert.deepEqual(violations, [], `removed messaging references found in shipped surfaces: ${violations.join(", ")}`);
 
   const packageJson = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
-  assert.equal(packageJson.dependencies?.["firebase-admin"], undefined, "orphaned server dependency must stay removed");
+  assert.equal(packageJson.dependencies?.["firebase-admin"], "14.3.0", "Firebase Admin is retained only for authenticated server boundaries");
+  assert.match(readFileSync(path.join(root, "app/server/firebaseAdmin.ts"), "utf8"), /verifyPermanentFirebaseRequest/);
   assert.equal(packageJson.dependencies?.zod, undefined, "feature-only schema dependency must stay removed");
 });

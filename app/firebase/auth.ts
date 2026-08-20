@@ -2,7 +2,7 @@
 
 import { EmailAuthProvider, GoogleAuthProvider, User, createUserWithEmailAndPassword, linkWithCredential, linkWithPopup, sendPasswordResetEmail, signInAnonymously, signInWithEmailAndPassword, signInWithPopup, signInWithRedirect, signOut, updateProfile } from "firebase/auth";
 import { doc, runTransaction, serverTimestamp } from "firebase/firestore";
-import { getFirebaseServices } from "./client";
+import { clearFirebaseCloudCache, getFirebaseServices } from "./client";
 import { friendlyAuthMessage, settleAuthenticatedUser } from "./authLogic";
 
 export type AuthResult = {
@@ -95,8 +95,10 @@ export function resetPassword(email: string) {
   return sendPasswordResetEmail(getFirebaseServices().auth, email.trim());
 }
 
-export function signOutOfCirca() {
-  return signOut(getFirebaseServices().auth);
+export async function signOutOfCirca() {
+  const { auth } = getFirebaseServices();
+  await signOut(auth);
+  await clearFirebaseCloudCache();
 }
 
 export function friendlyAuthError(error: unknown) {

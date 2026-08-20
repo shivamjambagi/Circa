@@ -2,11 +2,9 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CloudMigrationCard } from "../firebase/CloudMigrationCard";
 import { emailSignIn, emailSignUp, friendlyAuthError, googleSignIn, resetPassword, signOutOfCirca, upgradeAnonymousWithEmail, upgradeAnonymousWithGoogle } from "../firebase/auth";
 import { useFirebaseUser } from "../firebase/FirebaseProvider";
 import { safeReturnTo } from "../firebase/authLogic";
-import { Workspace, createEmptyWorkspace, createWorkspaceStore } from "../graphStore";
 
 function Mark() { return <span className="brand-mark" aria-hidden="true"><i /><i /></span>; }
 
@@ -19,13 +17,11 @@ export default function AuthPage() {
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
-  const [workspace, setWorkspace] = useState<Workspace>(() => createEmptyWorkspace());
   const [returnTo, setReturnTo] = useState("/account");
-  const context = returnTo.startsWith("/start") || returnTo.includes("workspace=1") ? "Sign in once, then choose whether you want a private Personal Map or a shared Community." : returnTo.startsWith("/community/new") ? "Create an account to create and manage a shared Community." : returnTo.startsWith("/network") ? "Create an account to import and protect your professional network." : "Keep your Communities, Networks and optional cloud features with you.";
+  const context = returnTo.startsWith("/community/new") ? "Create an account to create and manage a shared Community." : returnTo.startsWith("/network") ? "Create an account to import and protect your professional network." : "Sign in for Communities, Networks and account features. Your Personal workspace remains local and account-free.";
 
   useEffect(() => {
     const timer = window.setTimeout(() => setReturnTo(safeReturnTo(new URLSearchParams(window.location.search).get("returnTo"))), 0);
-    void createWorkspaceStore().loadWorkspace().then(setWorkspace).catch(() => undefined);
     return () => window.clearTimeout(timer);
   }, []);
 
@@ -46,7 +42,6 @@ export default function AuthPage() {
       {loading ? <p role="status">Checking your Circa session…</p> : user && !user.isAnonymous ? <>
         <p>Signed in as <strong>{user.displayName || user.email}</strong>.</p>
         <div className="auth-success-actions"><a className="button button-dark" href={returnTo}>Continue</a><a className="button button-paper" href="/">Open Circa</a><button className="button button-paper" onClick={() => void signOutOfCirca()}>Sign out</button></div>
-        <CloudMigrationCard workspace={workspace} />
       </> : <>
         {user?.isAnonymous && <p className="warm-notice">You joined a Community as a temporary member. Upgrade this identity so your membership stays with you—Circa will link the account rather than create a second member.</p>}
         <button className="button button-paper google-button" disabled={busy} onClick={async () => { setBusy(true); setMessage(""); try { const result = user?.isAnonymous ? await upgradeAnonymousWithGoogle() : await googleSignIn(); if (result.redirectStarted) setMessage("Opening secure Google sign-in…"); else if (result.user) { setMessage(result.profileSyncError || "You are signed in."); router.replace(returnTo); } } catch (error) { setMessage(friendlyAuthError(error)); } finally { setBusy(false); } }}>Continue with Google</button>

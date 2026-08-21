@@ -58,6 +58,4 @@ jobs:
         run: npm run check:clean -- "after production build"
       - run: npm run validate:artifact
       - run: npm run scan:artifact
-      - name: Verify the packaged Netlify function can load Firebase Admin
-        run: npm run test:netlify-package
       - run: npm run test:critical

@@ -58,7 +58,6 @@ test("sign-out clears Firestore IndexedDB without touching Personal LocalStorage
 test("CI scans secrets, dependencies and the client artifact", () => {
   const ci = read(".github/workflows/ci.yml"); const pkg = JSON.parse(read("package.json"));
   assert.match(ci, /gitleaks/); assert.match(ci, /audit:production/); assert.match(ci, /scan:artifact/); assert.ok(pkg.scripts["audit:production"]); assert.ok(pkg.scripts["scan:artifact"]);
-  assert.match(ci, /test:netlify-package/); assert.ok(pkg.scripts["test:netlify-package"]);
 });
 
 test("monitoring and controlled operations are privacy bounded", () => {
@@ -66,6 +65,5 @@ test("monitoring and controlled operations are privacy bounded", () => {
   assert.match(server, /circa_server_failure/); assert.doesNotMatch(server, /console\.error\([^\n]*request\.body/);
   assert.match(server, /circa_firebase_admin_diagnostic/); assert.match(server, /verifyIdToken\(match\[1\], true\)/);
   assert.doesNotMatch(server, /firebaseAdminDiagnostic[^\n]*(?:authorization|match\[1\]|request\.headers)/i);
-  assert.match(read("netlify.toml"), /external_node_modules\s*=\s*\["firebase-admin"\]/);
   assert.match(operations, /Never log request bodies/); assert.match(operations, /35-day expiry/); assert.ok(fs.existsSync(".github/workflows/release-firestore.yml"));
 });

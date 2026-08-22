@@ -17,8 +17,8 @@ test("non-essential Analytics is absent pending a storage-access decision", () =
 });
 
 test("cloud lifecycle API verifies identity, recent auth and ownership", () => {
-  const route = read("app/api/account-data/route.ts");
-  assert.match(route, /verifyPermanentFirebaseRequest/); assert.match(route, /requireRecentAuthentication/); assert.match(route, /transfer-ownership/); assert.match(route, /delete-owned-project/); assert.match(route, /recursiveDelete/); assert.match(route, /ownedProjects/); assert.match(route, /content-disposition/);
+  const route = read("app/api/account-data/route.ts"); const ownedDeletion = read("app/server/ownedProjectDeletion.ts");
+  assert.match(route, /verifyPermanentFirebaseRequest/); assert.match(route, /requireRecentAuthentication/); assert.match(route, /transfer-ownership/); assert.match(route, /delete-owned-project/); assert.match(ownedDeletion, /recursiveDelete/); assert.match(ownedDeletion, /projectDeletionOperations/); assert.match(route, /ownedProjects/); assert.match(route, /content-disposition/);
   assert.match(route, /enabled: false/); assert.match(route, /deleteUser/); assert.match(route, /EXPORT_TOO_LARGE/);
 });
 

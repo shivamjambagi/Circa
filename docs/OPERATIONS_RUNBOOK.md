@@ -10,7 +10,7 @@
 
 ## Privacy-safe monitoring
 
-Privileged routes log only an allowlisted scope/category, Netlify request ID and release commit. Never log request bodies, prompts, graph/contact fields, email, phone, tokens, IP addresses or HMAC network signals. Alert on 5xx rate, repeated App Check failures, join-code abuse and account-lifecycle failures. Give users the `x-circa-request-id` for unexpected server failures. Monitoring vendor, retention (target 30 days), access and alert routing require production configuration.
+Privileged routes normally log only an allowlisted scope/category, Netlify request ID and release commit. Owned-space deletion failures additionally log the action, project ID, allowlisted deletion stage and a length-bounded, redacted exception message/stack so an incomplete deletion can be resumed safely. Never log request bodies, confirmations, prompts, graph/contact fields, email, phone, tokens, invitation codes, credentials, private keys, IP addresses, UIDs or HMAC network signals. Alert on 5xx rate, repeated App Check failures, join-code abuse and account-lifecycle failures. Give users the `x-circa-request-id` for unexpected server failures. Monitoring vendor, retention (target 30 days), access and alert routing require production configuration.
 
 ## Backup and restore
 

@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 
 const specialSuites = new Map([
   ["firestore-rules.test.ts", "test:firestore"],
+  ["owned-project-deletion.test.ts", "test:firestore"],
   ["rendered-html.test.mjs", "test:critical"],
 ]);
 const allTests = readdirSync("tests").filter((name) => /\.test\.(?:ts|mjs)$/.test(name)).sort();

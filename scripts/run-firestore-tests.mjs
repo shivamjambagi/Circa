@@ -47,7 +47,7 @@ const child = spawn(process.execPath, [
   "--config", temporaryConfig,
   "--project", "circa-rules-test",
   "--only", "firestore",
-  "node --experimental-strip-types --test tests/firestore-rules.test.ts",
+  "node --experimental-strip-types --test --test-concurrency=1 tests/firestore-rules.test.ts tests/owned-project-deletion.test.ts",
 ], { stdio: "inherit" });
 const timer = setTimeout(() => child.kill(), 120_000);
 let exitCode = 1;

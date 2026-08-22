@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { DecodedIdToken } from "firebase-admin/auth";
 import type { DocumentData, DocumentReference, Query } from "firebase-admin/firestore";
 import { enforceSharedRateLimit, getAdminAuth, getAdminFirestore, getAdminFirestoreModule, privacyPreservingNetworkSignal, readJsonBodyWithLimit, reportServerFailure, serverErrorStatus, verifyPermanentFirebaseRequest } from "../../server/firebaseAdmin";
+import { deleteOwnedProject, reportOwnedProjectDeletionFailure, type OwnedProjectDeletionStage } from "../../server/ownedProjectDeletion";
 
 export const runtime = "nodejs";
 const MAX_EXPORT_DOCUMENTS = 20_000;
@@ -88,8 +89,36 @@ export async function GET(request: Request) {
 }
 
 export async function PATCH(request: Request) {
+  let lifecycleAction = "unknown";
+  let lifecycleProjectId = "invalid";
+  let deletionStage: OwnedProjectDeletionStage | "request" = "request";
   try {
-    const identity = await verifyPermanentFirebaseRequest(request, process.env.ACCOUNT_REQUIRE_APPCHECK === "true"); const body = await readJsonBodyWithLimit(request, 8 * 1024); const action = safeText(body.action, 40); const projectId = safeText(body.projectId, 160); const db = await getAdminFirestore(); const project = await db.doc(`projects/${projectId}`).get(); const membership = await db.doc(`projects/${projectId}/members/${identity.uid}`).get();
+    const identity = await verifyPermanentFirebaseRequest(request, process.env.ACCOUNT_REQUIRE_APPCHECK === "true");
+    const body = await readJsonBodyWithLimit(request, 8 * 1024);
+    const action = safeText(body.action, 40);
+    const projectId = safeText(body.projectId, 160);
+    lifecycleAction = action;
+    lifecycleProjectId = projectId;
+    if (!/^[A-Za-z0-9_-]{1,160}$/.test(projectId)) return NextResponse.json({ error: "Choose a valid Circa space." }, { status: 400 });
+    const db = await getAdminFirestore();
+
+    if (action === "delete-owned-project") {
+      await enforceSharedRateLimit("account-lifecycle", `${identity.uid}:${privacyPreservingNetworkSignal(request)}`, 20, 60 * 60_000);
+      requireRecentAuthentication(identity.token);
+      const result = await deleteOwnedProject(db, {
+        projectId,
+        ownerUid: identity.uid,
+        confirmation: safeText(body.confirmation, 180),
+        onStage(stage) { deletionStage = stage; },
+      });
+      if (result.status === "not-found") return NextResponse.json({ error: "That Circa space was not found." }, { status: 404 });
+      if (result.status === "forbidden") return NextResponse.json({ error: "Only the owner can permanently delete this space." }, { status: 403 });
+      if (result.status === "confirmation-mismatch") return NextResponse.json({ error: "Type the exact space name to confirm permanent deletion." }, { status: 400 });
+      return NextResponse.json({ ok: true }, { headers: { "cache-control": "no-store" } });
+    }
+
+    const project = await db.doc(`projects/${projectId}`).get();
+    const membership = await db.doc(`projects/${projectId}/members/${identity.uid}`).get();
     if (!project.exists || !membership.exists || membership.data()?.status !== "active") return NextResponse.json({ error: "That active membership was not found." }, { status: 404 });
     await enforceSharedRateLimit("account-lifecycle", `${identity.uid}:${privacyPreservingNetworkSignal(request)}`, 20, 60 * 60_000);
     if (action === "leave") { if (project.data()?.ownerId === identity.uid || membership.data()?.role === "owner") return NextResponse.json({ error: "Transfer ownership or permanently delete this space before leaving." }, { status: 409 }); await removeUserDataFromProject(projectId, identity.uid); return NextResponse.json({ ok: true }); }
@@ -97,11 +126,14 @@ export async function PATCH(request: Request) {
     if (action === "transfer-ownership") {
       if (project.data()?.ownerId !== identity.uid || membership.data()?.role !== "owner") return NextResponse.json({ error: "Only the current owner can transfer ownership." }, { status: 403 }); const newOwnerUid = safeText(body.newOwnerUid, 160); if (!newOwnerUid || newOwnerUid === identity.uid) return NextResponse.json({ error: "Choose another active member." }, { status: 400 }); const nextMemberRef = db.doc(`projects/${projectId}/members/${newOwnerUid}`); const nextMember = await nextMemberRef.get(); if (!nextMember.exists || nextMember.data()?.status !== "active") return NextResponse.json({ error: "Choose an active member." }, { status: 400 }); const nextAuth = await (await getAdminAuth()).getUser(newOwnerUid); if (!nextAuth.providerData.length) return NextResponse.json({ error: "Ownership requires a permanent Circa account." }, { status: 400 }); const { FieldValue } = await getAdminFirestoreModule(); await db.runTransaction(async (transaction) => { const fresh = await transaction.get(project.ref); if (fresh.data()?.ownerId !== identity.uid) throw new Error("OWNERSHIP_CHANGED"); transaction.update(project.ref, { ownerId: newOwnerUid, updatedAt: FieldValue.serverTimestamp() }); transaction.update(membership.ref, { role: "admin", updatedAt: FieldValue.serverTimestamp() }); transaction.update(nextMemberRef, { role: "owner", updatedAt: FieldValue.serverTimestamp() }); transaction.set(db.doc(`users/${identity.uid}/memberships/${projectId}`), { role: "admin", updatedAt: FieldValue.serverTimestamp() }, { merge: true }); transaction.set(db.doc(`users/${newOwnerUid}/memberships/${projectId}`), { role: "owner", updatedAt: FieldValue.serverTimestamp() }, { merge: true }); transaction.set(db.collection(`projects/${projectId}/moderationEvents`).doc(), { action: "ownership-transferred", actorUid: identity.uid, targetId: newOwnerUid, details: {}, schemaVersion: 1, createdAt: FieldValue.serverTimestamp() }); }); return NextResponse.json({ ok: true });
     }
-    if (action === "delete-owned-project") {
-      if (project.data()?.ownerId !== identity.uid) return NextResponse.json({ error: "Only the owner can permanently delete this space." }, { status: 403 }); if (safeText(body.confirmation, 180) !== safeText(project.data()?.name, 180)) return NextResponse.json({ error: "Type the exact space name to confirm permanent deletion." }, { status: 400 }); const members = await db.collection(`projects/${projectId}/members`).get(); const batch = db.batch(); members.docs.forEach((item) => batch.delete(db.doc(`users/${item.id}/memberships/${projectId}`))); await batch.commit(); await Promise.all([deleteInPages(() => db.collection("invites").where("projectId", "==", projectId)), deleteInPages(() => db.collection("joinCodes").where("projectId", "==", projectId))]); await db.recursiveDelete(project.ref); return NextResponse.json({ ok: true });
-    }
     return NextResponse.json({ error: "Unknown lifecycle action." }, { status: 400 });
-  } catch (error) { const message = error instanceof Error ? error.message : ""; if (message === "RECENT_AUTH_REQUIRED") return NextResponse.json({ error: "Sign in again before this sensitive action." }, { status: 401 }); if (message === "OWNERSHIP_CHANGED") return NextResponse.json({ error: "Ownership changed. Refresh and try again." }, { status: 409 }); return monitoredFailure(error, request, "account-lifecycle"); }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "";
+    if (message === "RECENT_AUTH_REQUIRED") return NextResponse.json({ error: "Sign in again before this sensitive action." }, { status: 401 });
+    if (message === "OWNERSHIP_CHANGED") return NextResponse.json({ error: "Ownership changed. Refresh and try again." }, { status: 409 });
+    if (lifecycleAction === "delete-owned-project") reportOwnedProjectDeletionFailure(lifecycleAction, lifecycleProjectId, deletionStage, error);
+    return monitoredFailure(error, request, "account-lifecycle");
+  }
 }
 
 export async function DELETE(request: Request) {

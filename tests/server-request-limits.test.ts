@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readJsonBodyWithLimit, readResponseJsonWithLimit, reportFirebaseAdminDiagnostic, serverErrorStatus } from "../app/server/firebaseAdmin.ts";
+import { reportOwnedProjectDeletionFailure } from "../app/server/ownedProjectDeletion.ts";
 
 function streamedRequest(chunks: string[]) {
   const encoder = new TextEncoder();
@@ -85,4 +86,42 @@ test("Firebase Admin diagnostics expose only allowlisted non-personal metadata",
 
 test("authentication failures retain the generic public response", () => {
   assert.deepEqual(serverErrorStatus(new Error("AUTH_REQUIRED")), { status: 401, message: "Sign in to continue." });
+});
+
+test("owned-project deletion failures retain the generic public 500 response", () => {
+  assert.deepEqual(serverErrorStatus(new Error("Firestore internal details")), {
+    status: 500,
+    message: "Circa could not complete that request.",
+  });
+});
+
+test("owned-project deletion diagnostics include stages but redact secrets and private contact data", () => {
+  const originalConsoleError = console.error;
+  const token = "eyJhbGciOiJSUzI1NiJ9.private-token-marker.signature-marker";
+  const privateKey = "-----BEGIN PRIVATE KEY-----private-key-marker-----END PRIVATE KEY-----";
+  const email = "private-contact@example.test";
+  const phone = "+44 7700 900123";
+  const inviteToken = "private-invitation-token-marker";
+  const clientSecret = "private-client-secret-marker";
+  const error = new Error(`Bearer ${token} ${email} ${phone} ${privateKey} client_secret=${clientSecret}`);
+  error.stack = `${error.message}\n    at users/private-uid/members/private-member/items/private-contact/invites/${inviteToken}`;
+  const lines: string[] = [];
+  try {
+    console.error = (...values: unknown[]) => { lines.push(values.map(String).join(" ")); };
+    reportOwnedProjectDeletionFailure("delete-owned-project", "safeProject123", "delete-project-tree", error);
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assert.equal(lines.length, 1);
+  const diagnostic = JSON.parse(lines[0]);
+  assert.equal(diagnostic.event, "circa_owned_project_deletion_failure");
+  assert.equal(diagnostic.action, "delete-owned-project");
+  assert.equal(diagnostic.projectId, "safeProject123");
+  assert.equal(diagnostic.stage, "delete-project-tree");
+  assert.equal(typeof diagnostic.errorMessage, "string");
+  assert.equal(typeof diagnostic.errorStack, "string");
+  for (const privateValue of [token, "private-token-marker", privateKey, "private-key-marker", email, phone, inviteToken, clientSecret, "private-uid", "private-member", "private-contact"]) {
+    assert.ok(!lines[0].includes(privateValue), `diagnostic must not log ${privateValue}`);
+  }
 });

@@ -2,7 +2,7 @@
 
 import QRCode from "qrcode";
 import Image from "next/image";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useReducer, useState } from "react";
 import { addPublishedItem, addPublishedList, createInvitation, createReminder, deletePublishedItem, deleteReminder, ensureCommunityMemberDirectoryEntry, getCloudProject, removeMember, revokeInvitation, reviewProposal, submitProposal, syncCommunityMemberDirectory, updateMemberRole, updatePublishedItem, watchCommunityItems, watchCommunityLists, watchCommunityMemberDirectory, watchInvitations, watchMembers, watchMembership, watchProposals, watchReminders } from "../../cloud/communityRepository";
 import type { CloudProject, CommunityItem, CommunityList, CommunityListType, CommunityMember, CommunityMemberSummary, EditProposal, PublicInvite } from "../../cloud/types";
 import { useFirebaseUser } from "../../firebase/FirebaseProvider";
@@ -10,6 +10,7 @@ import { PublishedCommunityRecord, queryCommunity } from "../../shared/community
 import { transferCloudProject } from "../../cloud/accountLifecycle";
 import ContactDetailsPanel from "./ContactDetailsPanel";
 import DirectoryImportTool from "./DirectoryImportTool";
+import { contactSearchReducer, initialContactSearchState } from "../contactSearchState";
 
 type Tab = "home" | "contacts" | "events" | "manage";
 type ItemDraft = Partial<CommunityItem>;
@@ -138,7 +139,8 @@ function CommunityHome({ project, lists, items, records, reminders, canReview, o
 }
 
 function ContactsView({ lists, items, user, projectId, canReview, members }: { lists: CommunityList[]; items: Record<string, CommunityItem[]>; user: NonNullable<ReturnType<typeof useFirebaseUser>["user"]>; projectId: string; canReview: boolean; members: CommunityMemberSummary[] }) {
-  const [query, setQuery] = useState("");
+  const [search, dispatchSearch] = useReducer(contactSearchReducer, initialContactSearchState);
+  const query = search.query;
   const [selected, setSelected] = useState<ContactEntry | null>(null);
   const [showMembers, setShowMembers] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
@@ -165,10 +167,15 @@ function ContactsView({ lists, items, user, projectId, canReview, members }: { l
     catch (next) { setMessage(next instanceof Error ? next.message : "Circa could not update that contact."); }
     finally { setBusy(false); }
   }
+  function chooseSearchSuggestion(suggestion: string) {
+    dispatchSearch({ type: "choose", query: suggestion });
+    const matchingContact = entries.find(({ item }) => item.title.trim().toLocaleLowerCase() === suggestion.trim().toLocaleLowerCase());
+    if (matchingContact) { setSelected(matchingContact); setEditing(false); setDraft(matchingContact.item); }
+  }
 
   return <section className="contacts-view"><header className="contacts-heading"><div><p className="eyebrow"><span /> Community contacts</p><h2>Contacts</h2><p>Find trusted services, people and useful local information.</p></div><div className="contacts-actions"><button className="member-count-button" onClick={() => setShowMembers(true)}>{activeMembers.length} {activeMembers.length === 1 ? "member" : "members"}</button><button className="button button-dark button-small" onClick={() => { resetDraft(); setShowAdd(true); }}>＋ Add contact</button></div></header>
-    <div className="contact-search-shell"><label className="contact-search"><span>⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search electricians, plumbers, schools or names…" aria-label="Search contacts" /></label>{suggestions.length > 0 && <div className="contact-suggestions" role="listbox" aria-label="Search suggestions">{suggestions.map((suggestion) => <button key={suggestion} onClick={() => setQuery(suggestion)}>{suggestion}</button>)}</div>}</div>
-    <div className="contact-table" role="table" aria-label="Community contacts"><div className="contact-table-head" role="row"><span>Name</span><span>Category</span><span>Phone</span><span>Email</span></div>{results.map((entry) => <button className="contact-row" role="row" aria-label={`Open ${entry.item.title} details`} key={`${entry.list.id}-${entry.item.id}`} onClick={() => { setSelected(entry); setEditing(false); setDraft(entry.item); }}><strong data-label="Name">{entry.item.title}</strong><span data-label="Category">{entry.item.category || entry.list.title}</span><span data-label="Phone" className={!entry.item.phone ? "contact-value-empty" : ""}>{entry.item.phone || "Not provided"}</span><span data-label="Email" className={!entry.item.email ? "contact-value-empty" : ""}>{entry.item.email || "Not provided"}</span></button>)}{!results.length && <div className="contact-empty">No contacts match “{query}”.</div>}</div>
+    <div className="contact-search-shell" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) dispatchSearch({ type: "close" }); }}><label className="contact-search"><span>⌕</span><input role="combobox" aria-autocomplete="list" value={query} onChange={(event) => dispatchSearch({ type: "change", query: event.target.value })} onFocus={() => dispatchSearch({ type: "focus" })} onKeyDown={(event) => { if (event.key === "Escape") dispatchSearch({ type: "close" }); }} placeholder="Search electricians, plumbers, schools or names…" aria-label="Search contacts" aria-expanded={search.suggestionsOpen && suggestions.length > 0} aria-controls="contact-search-suggestions" /></label>{search.suggestionsOpen && suggestions.length > 0 && <div id="contact-search-suggestions" className="contact-suggestions" role="listbox" aria-label="Search suggestions">{suggestions.map((suggestion) => <button type="button" role="option" aria-selected="false" key={suggestion} onClick={() => chooseSearchSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>
+    <div className="contact-table" role="table" aria-label="Community contacts"><div className="contact-table-head" role="row"><span>Name</span><span>Category</span><span>Phone</span><span>Email</span></div>{results.map((entry) => <button className="contact-row" role="row" aria-label={`Open ${entry.item.title} details`} key={`${entry.list.id}-${entry.item.id}`} onClick={() => { dispatchSearch({ type: "close" }); setSelected(entry); setEditing(false); setDraft(entry.item); }}><strong data-label="Name">{entry.item.title}</strong><span data-label="Category">{entry.item.category || entry.list.title}</span><span data-label="Phone" className={!entry.item.phone ? "contact-value-empty" : ""}>{entry.item.phone || "Not provided"}</span><span data-label="Email" className={!entry.item.email ? "contact-value-empty" : ""}>{entry.item.email || "Not provided"}</span></button>)}{!results.length && <div className="contact-empty">No contacts match “{query}”.</div>}</div>
     {message && <div className="contacts-message" role="status">{message}</div>}
 
     {showAdd && <div className="popover-backdrop" onMouseDown={() => setShowAdd(false)}><form className="add-popover contact-editor" onSubmit={addContact} onMouseDown={(event) => event.stopPropagation()}><button type="button" className="popover-close" onClick={() => setShowAdd(false)} aria-label="Close add contact">×</button><span className="form-kicker">Quick add</span><h2>Add a contact</h2><p>Just the useful details. You can add more later if needed.</p><label>Name<input required autoFocus maxLength={120} value={draft.title || ""} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="e.g. Northside Electrical" /></label><label>Category<input required list="contact-category-options" value={draft.category || ""} onChange={(event) => setDraft({ ...draft, category: event.target.value })} placeholder="e.g. Electrician" /></label><datalist id="contact-category-options">{contactCategories.map((category) => <option key={category} value={category} />)}</datalist><div className="contact-editor-pair"><label>Phone<input value={draft.phone || ""} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} /></label><label>Email<input type="email" value={draft.email || ""} onChange={(event) => setDraft({ ...draft, email: event.target.value })} /></label></div>{!targetList && <p role="alert">An admin needs to create a Contacts or Directory section before contacts can be added.</p>}<button className="button button-dark" disabled={busy || !targetList}>{busy ? "Saving…" : canReview ? "Add contact" : "Send for review"}</button></form></div>}

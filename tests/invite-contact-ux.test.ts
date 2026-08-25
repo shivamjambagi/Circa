@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { buildContactSearchSuggestions, contactMatchesSelectedCategory, contactSearchReducer } from "../app/community/contactSearchState.ts";
+import { buildContactSearchSuggestions, contactMatchesCategoryFilter, contactSearchReducer } from "../app/community/contactSearchState.ts";
 import { activeInviteMembershipDestination } from "../app/join/inviteMembership.ts";
 
 const communityInvite = { projectId: "community-one", projectMode: "community" as const, status: "active" };
@@ -40,15 +40,28 @@ test("an existing active membership is not duplicated by a repeated join", () =>
 });
 
 const contactSources = [
-  { category: "Plumbing and Heating", contactKey: "services:pipe-care", listTitle: "Local services", title: "Pipe Care" },
-  { category: "Electrician", contactKey: "services:sparks", listTitle: "Local services", title: "Plumbing Advice Electrical" },
+  { category: "Plumbing and Heating", contactKey: "services:pipe-care", listTitle: "Local services", title: "Pipe Care", phone: "07000 111111", services: "Boiler repairs", notes: "Emergency call-outs" },
+  { category: "Plumbing and Heating", contactKey: "services:warm-home", listTitle: "Local services", title: "Warm Home Boilers", phone: "07000 222222", services: "Heating", notes: "Weekdays" },
+  { category: "Plastering", contactKey: "services:smooth-walls", listTitle: "Local services", title: "Smooth Walls Ltd", phone: "07000 333333", services: "Interior walls", notes: "Plaster specialist" },
+  { category: "Patio / Paving", contactKey: "services:stone-patio", listTitle: "Local services", title: "Stone Patio Co", phone: "07000 444444", services: "Garden paving", notes: "Outdoor work" },
+  { category: "Electrician", contactKey: "services:sparks", listTitle: "Local services", title: "Plumbing Advice Electrical", phone: "07000 555555", services: "Plumbing-friendly rewires", notes: "Ask for the plumbing offer" },
 ];
 const normalizeSuggestion = (value: string) => value.toLocaleLowerCase().trim();
 
-test("partial category query shows the complete category suggestion", () => {
+test("partial query returns unique category suggestions only", () => {
   const suggestions = buildContactSearchSuggestions(contactSources, "Pl", normalizeSuggestion);
-  assert.ok(suggestions.some((suggestion) => suggestion.kind === "category" && suggestion.label === "Plumbing and Heating"));
+  assert.deepEqual(suggestions.map((suggestion) => suggestion.label), ["Plumbing and Heating", "Plastering"]);
+  assert.ok(suggestions.every((suggestion) => suggestion.kind === "category"));
   assert.match(communityClientSource, /buildContactSearchSuggestions/);
+});
+
+test("individual contact data never appears as an autocomplete suggestion", () => {
+  for (const forbiddenQuery of ["Pipe Care", "Warm Home", "07000", "Boiler repairs", "Emergency call-outs", "Local services"]) {
+    assert.deepEqual(buildContactSearchSuggestions(contactSources, forbiddenQuery, normalizeSuggestion), []);
+  }
+  assert.doesNotMatch(communityClientSource, /type: "choose-contact"/);
+  assert.doesNotMatch(communityClientSource, /contactKey: `\$\{list\.id\}:\$\{item\.id\}`/);
+  assert.match(communityClientSource, /aria-label="Category suggestions"/);
 });
 
 test("selecting a category commits its complete label to Contacts search", () => {
@@ -61,21 +74,32 @@ test("selecting a category commits its complete label to Contacts search", () =>
 test("selecting a category closes Contacts suggestions", () => {
   const selected = contactSearchReducer({ query: "Pl", selectedCategory: null, suggestionsOpen: true }, { type: "choose-category", label: "Plumbing and Heating" });
   assert.equal(selected.suggestionsOpen, false);
-});
-
-test("selected category filters contacts by exact category rather than the previous fuzzy query", () => {
-  const visible = contactSources.filter((contact) => contactMatchesSelectedCategory(contact.category, contact.listTitle, "Plumbing and Heating"));
-  assert.deepEqual(visible.map((contact) => contact.contactKey), ["services:pipe-care"]);
-  assert.equal(contactMatchesSelectedCategory("Electrician", "Plumbing and Heating", "Plumbing and Heating"), false);
-  assert.equal(contactMatchesSelectedCategory(undefined, "Plumbing and Heating", "Plumbing and Heating"), true);
-  assert.match(communityClientSource, /search\.selectedCategory[\s\S]*contactMatchesSelectedCategory/);
-});
-
-test("Contacts search input remains rendered after category selection", () => {
-  const selected = contactSearchReducer({ query: "Pl", selectedCategory: null, suggestionsOpen: true }, { type: "choose-category", label: "Plumbing and Heating" });
-  assert.equal(selected.query, "Plumbing and Heating");
   assert.match(communityClientSource, /<input role="combobox"[^>]*value=\{query\}/);
   assert.doesNotMatch(communityClientSource, /search\.suggestionsOpen[^\n]*<input role="combobox"[^>]*value=\{query\}/);
+});
+
+test("selecting a category does not open an individual contact", () => {
+  const chooserStart = communityClientSource.indexOf("function chooseSearchSuggestion");
+  const chooserEnd = communityClientSource.indexOf("return <section className=\"contacts-view\"", chooserStart);
+  const chooser = communityClientSource.slice(chooserStart, chooserEnd);
+  assert.ok(chooserStart >= 0 && chooserEnd > chooserStart, "category suggestion chooser must be present");
+  assert.match(chooser, /dispatchSearch\(\{ type: "choose-category", label: suggestion\.label \}\)/);
+  assert.doesNotMatch(chooser, /setSelected|setDraft|contactKey|matchingContact/);
+});
+
+test("selected category filters the list to every exact-category contact", () => {
+  const visible = contactSources.filter((contact) => contactMatchesCategoryFilter(contact.category, "Pl", "Plumbing and Heating", normalizeSuggestion));
+  assert.deepEqual(visible.map((contact) => contact.contactKey), ["services:pipe-care", "services:warm-home"]);
+  assert.equal(contactMatchesCategoryFilter("Electrician", "Pl", "Plumbing and Heating", normalizeSuggestion), false);
+  assert.match(communityClientSource, /contactMatchesCategoryFilter\(item\.category \|\| list\.title, query, search\.selectedCategory, normalizeSearch\)/);
+});
+
+test("a contact is opened only when the user manually chooses its filtered row", () => {
+  const tableStart = communityClientSource.indexOf("<div className=\"contact-table\"");
+  const tableEnd = communityClientSource.indexOf("{message &&", tableStart);
+  const table = communityClientSource.slice(tableStart, tableEnd);
+  assert.ok(tableStart >= 0 && tableEnd > tableStart, "Contacts result table must be rendered");
+  assert.match(table, /className="contact-row"[\s\S]*onClick=\{\(\) => \{ dispatchSearch\(\{ type: "close" \}\); setSelected\(entry\)/);
 });
 
 test("editing Contacts search after category selection clears exact-category mode", () => {
@@ -84,16 +108,15 @@ test("editing Contacts search after category selection clears exact-category mod
   assert.deepEqual(edited, { query: "Plumb", selectedCategory: null, suggestionsOpen: true });
 });
 
-test("existing contact-suggestion selection still opens the contact and closes suggestions", () => {
-  const selected = contactSearchReducer({ query: "Pipe", selectedCategory: "Plumbing and Heating", suggestionsOpen: true }, { type: "choose-contact", label: "Pipe Care" });
-  assert.deepEqual(selected, { query: "Pipe Care", selectedCategory: null, suggestionsOpen: false });
-  assert.match(communityClientSource, /suggestion\.kind === "category"/);
-  assert.match(communityClientSource, /setSelected\(matchingContact\)/);
-  assert.match(communityClientSource, /dispatchSearch\(\{ type: "close" \}\); setSelected\(entry\)/);
+test("clearing Contacts search restores every contact", () => {
+  const cleared = contactSearchReducer({ query: "Plumbing and Heating", selectedCategory: "Plumbing and Heating", suggestionsOpen: false }, { type: "change", query: "" });
+  assert.deepEqual(cleared, { query: "", selectedCategory: null, suggestionsOpen: false });
+  const visible = contactSources.filter((contact) => contactMatchesCategoryFilter(contact.category, cleared.query, cleared.selectedCategory, normalizeSuggestion));
+  assert.equal(visible.length, contactSources.length);
 });
 
 test("mobile pointer selection prevents blur from cancelling the suggestion click", () => {
-  const optionStart = communityClientSource.indexOf("key={`${suggestion.kind}:${suggestion.label}`}");
+  const optionStart = communityClientSource.indexOf("key={suggestion.label}");
   const optionEnd = communityClientSource.indexOf("{suggestion.label}</button>", optionStart);
   const option = communityClientSource.slice(optionStart, optionEnd);
   assert.ok(optionStart >= 0 && optionEnd > optionStart, "typed suggestion option must be rendered");

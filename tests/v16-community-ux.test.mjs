@@ -35,10 +35,10 @@ test("Community member navigation is deliberately small and role-aware", async (
   assert.doesNotMatch(source, /\["suggestions", "Suggestions"\]/);
 });
 
-test("Contacts are compact, searchable and use a four-field quick add", async () => {
+test("Contacts are compact, category-filterable and use a four-field quick add", async () => {
   const source = await readFile(new URL("../app/community/[projectId]/CommunityClient.tsx", import.meta.url), "utf8");
   const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
-  assert.match(source, /Search electricians, plumbers, schools or names/);
+  assert.match(source, /Filter contacts by category/);
   assert.match(source, /Add a contact/);
   assert.match(source, /contact-category-options/);
   assert.match(source, />Phone</);

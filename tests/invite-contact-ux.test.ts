@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
-import { contactSearchReducer, initialContactSearchState } from "../app/community/contactSearchState.ts";
+import { buildContactSearchSuggestions, contactMatchesSelectedCategory, contactSearchReducer } from "../app/community/contactSearchState.ts";
 import { activeInviteMembershipDestination } from "../app/join/inviteMembership.ts";
 
 const communityInvite = { projectId: "community-one", projectMode: "community" as const, status: "active" };
@@ -39,31 +39,68 @@ test("an existing active membership is not duplicated by a repeated join", () =>
   assert.doesNotMatch(existingMemberBranch, /transaction\.set\(memberRef/);
 });
 
-test("Contacts suggestions appear while the user searches", () => {
-  const searching = contactSearchReducer(initialContactSearchState, { type: "change", query: "electrician" });
-  assert.deepEqual(searching, { query: "electrician", suggestionsOpen: true });
-  assert.match(communityClientSource, /search\.suggestionsOpen && suggestions\.length > 0/);
+const contactSources = [
+  { category: "Plumbing and Heating", contactKey: "services:pipe-care", listTitle: "Local services", title: "Pipe Care" },
+  { category: "Electrician", contactKey: "services:sparks", listTitle: "Local services", title: "Plumbing Advice Electrical" },
+];
+const normalizeSuggestion = (value: string) => value.toLocaleLowerCase().trim();
+
+test("partial category query shows the complete category suggestion", () => {
+  const suggestions = buildContactSearchSuggestions(contactSources, "Pl", normalizeSuggestion);
+  assert.ok(suggestions.some((suggestion) => suggestion.kind === "category" && suggestion.label === "Plumbing and Heating"));
+  assert.match(communityClientSource, /buildContactSearchSuggestions/);
 });
 
-test("choosing a Contacts suggestion closes suggestions and opens a matching contact", () => {
-  const searching = { query: "elect", suggestionsOpen: true };
-  assert.deepEqual(contactSearchReducer(searching, { type: "choose", query: "Electrician" }), { query: "Electrician", suggestionsOpen: false });
-  assert.match(communityClientSource, /setSelected\(matchingContact\)/);
-  assert.match(communityClientSource, /dispatchSearch\(\{ type: "close" \}\); setSelected\(entry\)/);
+test("selecting a category commits its complete label to Contacts search", () => {
+  const searching = { query: "Pl", selectedCategory: null, suggestionsOpen: true };
+  const selected = contactSearchReducer(searching, { type: "choose-category", label: "Plumbing and Heating" });
+  assert.equal(selected.query, "Plumbing and Heating");
+  assert.equal(selected.selectedCategory, "Plumbing and Heating");
 });
 
-test("Contacts search input remains rendered after a result is selected", () => {
-  const selected = contactSearchReducer({ query: "electrician", suggestionsOpen: true }, { type: "choose", query: "Northside Electrical" });
-  assert.equal(selected.query, "Northside Electrical");
+test("selecting a category closes Contacts suggestions", () => {
+  const selected = contactSearchReducer({ query: "Pl", selectedCategory: null, suggestionsOpen: true }, { type: "choose-category", label: "Plumbing and Heating" });
   assert.equal(selected.suggestionsOpen, false);
+});
+
+test("selected category filters contacts by exact category rather than the previous fuzzy query", () => {
+  const visible = contactSources.filter((contact) => contactMatchesSelectedCategory(contact.category, contact.listTitle, "Plumbing and Heating"));
+  assert.deepEqual(visible.map((contact) => contact.contactKey), ["services:pipe-care"]);
+  assert.equal(contactMatchesSelectedCategory("Electrician", "Plumbing and Heating", "Plumbing and Heating"), false);
+  assert.equal(contactMatchesSelectedCategory(undefined, "Plumbing and Heating", "Plumbing and Heating"), true);
+  assert.match(communityClientSource, /search\.selectedCategory[\s\S]*contactMatchesSelectedCategory/);
+});
+
+test("Contacts search input remains rendered after category selection", () => {
+  const selected = contactSearchReducer({ query: "Pl", selectedCategory: null, suggestionsOpen: true }, { type: "choose-category", label: "Plumbing and Heating" });
+  assert.equal(selected.query, "Plumbing and Heating");
   assert.match(communityClientSource, /<input role="combobox"[^>]*value=\{query\}/);
   assert.doesNotMatch(communityClientSource, /search\.suggestionsOpen[^\n]*<input role="combobox"[^>]*value=\{query\}/);
 });
 
-test("focusing or editing Contacts search again reopens suggestions", () => {
-  const selected = { query: "Electrician", suggestionsOpen: false };
-  assert.equal(contactSearchReducer(selected, { type: "focus" }).suggestionsOpen, true);
-  assert.equal(contactSearchReducer(selected, { type: "change", query: "Electricians" }).suggestionsOpen, true);
+test("editing Contacts search after category selection clears exact-category mode", () => {
+  const selected = { query: "Plumbing and Heating", selectedCategory: "Plumbing and Heating", suggestionsOpen: false };
+  const edited = contactSearchReducer(selected, { type: "change", query: "Plumb" });
+  assert.deepEqual(edited, { query: "Plumb", selectedCategory: null, suggestionsOpen: true });
+});
+
+test("existing contact-suggestion selection still opens the contact and closes suggestions", () => {
+  const selected = contactSearchReducer({ query: "Pipe", selectedCategory: "Plumbing and Heating", suggestionsOpen: true }, { type: "choose-contact", label: "Pipe Care" });
+  assert.deepEqual(selected, { query: "Pipe Care", selectedCategory: null, suggestionsOpen: false });
+  assert.match(communityClientSource, /suggestion\.kind === "category"/);
+  assert.match(communityClientSource, /setSelected\(matchingContact\)/);
+  assert.match(communityClientSource, /dispatchSearch\(\{ type: "close" \}\); setSelected\(entry\)/);
+});
+
+test("mobile pointer selection prevents blur from cancelling the suggestion click", () => {
+  const optionStart = communityClientSource.indexOf("key={`${suggestion.kind}:${suggestion.label}`}");
+  const optionEnd = communityClientSource.indexOf("{suggestion.label}</button>", optionStart);
+  const option = communityClientSource.slice(optionStart, optionEnd);
+  assert.ok(optionStart >= 0 && optionEnd > optionStart, "typed suggestion option must be rendered");
+  assert.match(option, /onPointerDown=\{\(event\) => event\.preventDefault\(\)\}/);
+  assert.match(option, /onPointerUp=\{\(\) => chooseSearchSuggestion\(suggestion\)\}/);
+  assert.match(option, /onClick=\{\(\) => chooseSearchSuggestion\(suggestion\)\}/);
+  assert.ok(option.indexOf("onPointerDown") < option.indexOf("onPointerUp") && option.indexOf("onPointerUp") < option.indexOf("onClick"));
   assert.match(communityClientSource, /onFocus=\{\(\) => dispatchSearch\(\{ type: "focus" \}\)\}/);
   assert.match(communityClientSource, /event\.key === "Escape"/);
   assert.match(communityClientSource, /!event\.currentTarget\.contains\(event\.relatedTarget\)/);

@@ -10,7 +10,7 @@ import { PublishedCommunityRecord, queryCommunity } from "../../shared/community
 import { transferCloudProject } from "../../cloud/accountLifecycle";
 import ContactDetailsPanel from "./ContactDetailsPanel";
 import DirectoryImportTool from "./DirectoryImportTool";
-import { contactSearchReducer, initialContactSearchState } from "../contactSearchState";
+import { buildContactSearchSuggestions, contactMatchesSelectedCategory, contactSearchReducer, initialContactSearchState, type ContactSearchSuggestion } from "../contactSearchState";
 
 type Tab = "home" | "contacts" | "events" | "manage";
 type ItemDraft = Partial<CommunityItem>;
@@ -149,8 +149,10 @@ function ContactsView({ lists, items, user, projectId, canReview, members }: { l
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const entries = useMemo(() => lists.flatMap((list) => (items[list.id] || []).filter((item) => item.enabled !== false).map((item) => ({ list, item }))), [items, lists]);
-  const results = useMemo(() => entries.map((entry) => ({ entry, score: contactScore(entry, query) })).filter(({ score }) => score > 0).sort((a, b) => b.score - a.score || a.entry.item.title.localeCompare(b.entry.item.title)).map(({ entry }) => entry), [entries, query]);
-  const suggestions = useMemo(() => { if (!query.trim()) return []; const q = normalizeSearch(query); const values = [...new Set(entries.flatMap(({ list, item }) => [item.category, list.title, item.title]).filter(Boolean))]; return values.filter((value) => normalizeSearch(value).includes(q) || q.includes(normalizeSearch(value))).slice(0, 6); }, [entries, query]);
+  const results = useMemo(() => search.selectedCategory
+    ? entries.filter(({ list, item }) => contactMatchesSelectedCategory(item.category, list.title, search.selectedCategory))
+    : entries.map((entry) => ({ entry, score: contactScore(entry, query) })).filter(({ score }) => score > 0).sort((a, b) => b.score - a.score || a.entry.item.title.localeCompare(b.entry.item.title)).map(({ entry }) => entry), [entries, query, search.selectedCategory]);
+  const suggestions = useMemo(() => buildContactSearchSuggestions(entries.map(({ list, item }) => ({ category: item.category, contactKey: `${list.id}:${item.id}`, listTitle: list.title, title: item.title })), query, normalizeSearch), [entries, query]);
   const activeMembers = members.filter((item) => item.status === "active");
   const targetList = lists.find((list) => list.listType === "contact") || lists.find((list) => list.listType === "directory") || lists.find((list) => list.listType === "school") || lists[0];
 
@@ -167,14 +169,15 @@ function ContactsView({ lists, items, user, projectId, canReview, members }: { l
     catch (next) { setMessage(next instanceof Error ? next.message : "Circa could not update that contact."); }
     finally { setBusy(false); }
   }
-  function chooseSearchSuggestion(suggestion: string) {
-    dispatchSearch({ type: "choose", query: suggestion });
-    const matchingContact = entries.find(({ item }) => item.title.trim().toLocaleLowerCase() === suggestion.trim().toLocaleLowerCase());
+  function chooseSearchSuggestion(suggestion: ContactSearchSuggestion) {
+    if (suggestion.kind === "category") { dispatchSearch({ type: "choose-category", label: suggestion.label }); return; }
+    dispatchSearch({ type: "choose-contact", label: suggestion.label });
+    const matchingContact = entries.find(({ list, item }) => `${list.id}:${item.id}` === suggestion.contactKey);
     if (matchingContact) { setSelected(matchingContact); setEditing(false); setDraft(matchingContact.item); }
   }
 
   return <section className="contacts-view"><header className="contacts-heading"><div><p className="eyebrow"><span /> Community contacts</p><h2>Contacts</h2><p>Find trusted services, people and useful local information.</p></div><div className="contacts-actions"><button className="member-count-button" onClick={() => setShowMembers(true)}>{activeMembers.length} {activeMembers.length === 1 ? "member" : "members"}</button><button className="button button-dark button-small" onClick={() => { resetDraft(); setShowAdd(true); }}>＋ Add contact</button></div></header>
-    <div className="contact-search-shell" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) dispatchSearch({ type: "close" }); }}><label className="contact-search"><span>⌕</span><input role="combobox" aria-autocomplete="list" value={query} onChange={(event) => dispatchSearch({ type: "change", query: event.target.value })} onFocus={() => dispatchSearch({ type: "focus" })} onKeyDown={(event) => { if (event.key === "Escape") dispatchSearch({ type: "close" }); }} placeholder="Search electricians, plumbers, schools or names…" aria-label="Search contacts" aria-expanded={search.suggestionsOpen && suggestions.length > 0} aria-controls="contact-search-suggestions" /></label>{search.suggestionsOpen && suggestions.length > 0 && <div id="contact-search-suggestions" className="contact-suggestions" role="listbox" aria-label="Search suggestions">{suggestions.map((suggestion) => <button type="button" role="option" aria-selected="false" key={suggestion} onClick={() => chooseSearchSuggestion(suggestion)}>{suggestion}</button>)}</div>}</div>
+    <div className="contact-search-shell" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) dispatchSearch({ type: "close" }); }}><label className="contact-search"><span>⌕</span><input role="combobox" aria-autocomplete="list" value={query} onChange={(event) => dispatchSearch({ type: "change", query: event.target.value })} onFocus={() => dispatchSearch({ type: "focus" })} onKeyDown={(event) => { if (event.key === "Escape") dispatchSearch({ type: "close" }); }} placeholder="Search electricians, plumbers, schools or names…" aria-label="Search contacts" aria-expanded={search.suggestionsOpen && suggestions.length > 0} aria-controls="contact-search-suggestions" /></label>{search.suggestionsOpen && suggestions.length > 0 && <div id="contact-search-suggestions" className="contact-suggestions" role="listbox" aria-label="Search suggestions">{suggestions.map((suggestion) => <button type="button" role="option" aria-selected="false" key={`${suggestion.kind}:${suggestion.label}`} onPointerDown={(event) => event.preventDefault()} onPointerUp={() => chooseSearchSuggestion(suggestion)} onClick={() => chooseSearchSuggestion(suggestion)}>{suggestion.label}</button>)}</div>}</div>
     <div className="contact-table" role="table" aria-label="Community contacts"><div className="contact-table-head" role="row"><span>Name</span><span>Category</span><span>Phone</span><span>Email</span></div>{results.map((entry) => <button className="contact-row" role="row" aria-label={`Open ${entry.item.title} details`} key={`${entry.list.id}-${entry.item.id}`} onClick={() => { dispatchSearch({ type: "close" }); setSelected(entry); setEditing(false); setDraft(entry.item); }}><strong data-label="Name">{entry.item.title}</strong><span data-label="Category">{entry.item.category || entry.list.title}</span><span data-label="Phone" className={!entry.item.phone ? "contact-value-empty" : ""}>{entry.item.phone || "Not provided"}</span><span data-label="Email" className={!entry.item.email ? "contact-value-empty" : ""}>{entry.item.email || "Not provided"}</span></button>)}{!results.length && <div className="contact-empty">No contacts match “{query}”.</div>}</div>
     {message && <div className="contacts-message" role="status">{message}</div>}
 

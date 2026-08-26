@@ -1234,7 +1234,7 @@ footer p { color:var(--muted); font-size:13px; } footer button { margin-left:aut
 .home-quick-actions button { min-height:38px; padding:0 13px; border:1px solid rgba(34,34,31,.2); background:#fffefa; color:#35332e; cursor:pointer; font:600 10px var(--font-manrope),sans-serif; }
 .home-quick-actions button.primary { background:#24231f; border-color:#24231f; color:#fffefa; }
 .home-quick-actions button:hover,.home-quick-actions button:focus-visible { transform:translateY(-1px); outline:2px solid transparent; box-shadow:0 5px 15px rgba(34,34,31,.08); }
-.home-status-grid { display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:12px; }
+.home-status-grid { display:grid; grid-template-columns:1.2fr 1fr 1fr; gap:12px; margin-bottom:24px; }
 .home-status-card { min-height:205px; padding:24px; display:flex; flex-direction:column; position:relative; overflow:hidden; }
 .home-status-card.reminder-status { background:#f4ead0; }
 .home-status-card.collection-status { background:#eef2ea; }
@@ -1246,7 +1246,7 @@ footer p { color:var(--muted); font-size:13px; } footer button { margin-left:aut
 .home-status-card p { margin:0; color:#6c685f; line-height:1.55; font-size:10px; }
 .home-status-meta { margin-top:9px; width:max-content; padding:4px 7px; background:rgba(255,255,255,.48); color:#6a6457; font-size:8px; text-transform:capitalize; }
 .home-card-link { width:max-content; margin-top:auto; padding:14px 0 0; border:0; background:none; color:#3f3b34; cursor:pointer; text-decoration:underline; text-underline-offset:3px; font-size:9px; }
-.community-snapshot { display:grid; grid-template-columns:repeat(3,1fr); margin:14px 0 40px; border:1px solid rgba(34,34,31,.16); background:#fffefa; }
+.community-snapshot { display:grid; grid-template-columns:repeat(3,1fr); margin:14px 0 24px; border:1px solid rgba(34,34,31,.16); background:#fffefa; }
 .community-snapshot > * { min-height:94px; padding:17px 19px; display:grid; grid-template-columns:auto 1fr; column-gap:10px; align-content:center; border:0; border-right:1px solid rgba(34,34,31,.12); background:transparent; text-align:left; color:#24231f; }
 .community-snapshot > *:last-child { border-right:0; }
 .community-snapshot button { cursor:pointer; }

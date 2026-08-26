@@ -4,10 +4,11 @@ import { User } from "firebase/auth";
 import { DocumentData, DocumentSnapshot, Timestamp, WriteBatch, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { getFirebaseServices } from "../firebase/client";
 import type { CloudProject, CommunityItem, CommunityList, CommunityListType, CommunityMember, CommunityMemberSummary, EditProposal, PreviewSection, PublicInvite } from "./types";
+import { binCollectionItem, parseBinCollectionImport, validateBinCollection, validateBinDate, type BinCollectionInput } from "../community/binCollections";
 
 const DEFAULT_SECTIONS: Array<{ title: string; listType: CommunityListType; description: string }> = [
   { title: "Local services", listType: "directory", description: "Trusted contacts and useful local services." },
-  { title: "Bin collections", listType: "bin", description: "Collection schedules and reminders." },
+  { title: "Bin collections", listType: "bin", description: "Community collection schedule." },
   { title: "Schools", listType: "school", description: "Local school information." },
   { title: "Events", listType: "event", description: "Community meetings and upcoming events." },
   { title: "Useful contacts", listType: "contact", description: "Council and other useful information." },
@@ -129,7 +130,7 @@ function itemPayload(item: Partial<CommunityItem>) {
     category: safeText(item.category, 80), itemType: item.itemType || "custom", phone: safeText(item.phone, 80), email: safeText(item.email, 180),
     url: safeText(item.url ?? item.website, 500), website: safeText(item.website ?? item.url, 500), address: safeText(item.address, 500), notes: safeText(item.notes, 1200),
     openingInformation: safeText(item.openingInformation, 300), date: safeText(item.date, 80), startDate: safeText(item.startDate, 20), startTime: safeText(item.startTime, 20), endTime: safeText(item.endTime, 20), location: safeText(item.location, 300), schoolType: safeText(item.schoolType, 120),
-    binType: safeText(item.binType, 80), schedule: item.schedule, timezone: safeText(item.timezone, 80), areaLabel: safeText(item.areaLabel, 120), enabled: item.enabled !== false,
+    binType: safeText(item.binType, 80), bins: Array.isArray(item.bins) ? item.bins : undefined, schedule: item.schedule, timezone: safeText(item.timezone, 80), areaLabel: safeText(item.areaLabel, 120), enabled: item.enabled !== false,
     customFields: item.customFields || {}, order: Number(item.order || Date.now()), contentVersion: Math.max(1, Number(item.contentVersion || 1)), schemaVersion: 2,
   });
 }
@@ -139,6 +140,46 @@ export async function addPublishedItem(projectId: string, listId: string, item: 
   batch.set(ref, { ...itemPayload({ ...item, contentVersion: 1 }), createdAt: serverTimestamp(), updatedAt: serverTimestamp() });
   addModerationEvent(batch, projectId, "item-published", currentUid(), ref.id, { listId }); await batch.commit();
   return ref.id;
+}
+
+export async function saveBinCollection(projectId: string, listId: string, input: BinCollectionInput, previousDate?: string) {
+  const validated = validateBinCollection(input);
+  const sourceDate = previousDate ? validateBinDate(previousDate) : null;
+  const { db } = getFirebaseServices();
+  const actorUid = currentUid();
+  const targetRef = doc(db, "projects", projectId, "lists", listId, "items", validated.date);
+  const sourceRef = doc(db, "projects", projectId, "lists", listId, "items", sourceDate || validated.date);
+
+  await runTransaction(db, async (transaction) => {
+    const source = await transaction.get(sourceRef);
+    const target = sourceRef.path === targetRef.path ? source : await transaction.get(targetRef);
+    if (!sourceDate && target.exists()) throw new Error("A collection already exists for that date.");
+    if (sourceDate && !source.exists()) throw new Error("That collection no longer exists.");
+    if (sourceDate && sourceRef.path !== targetRef.path && target.exists()) throw new Error("A collection already exists for that date.");
+    const nextVersion = Number(source.data()?.contentVersion || 0) + 1;
+    transaction.set(targetRef, {
+      ...itemPayload({ ...binCollectionItem(validated), contentVersion: nextVersion }),
+      createdAt: source.data()?.createdAt || serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    if (sourceRef.path !== targetRef.path) transaction.delete(sourceRef);
+    const event = doc(collection(db, "projects", projectId, "moderationEvents"));
+    transaction.set(event, { action: sourceDate ? "item-updated" : "item-published", actorUid, targetId: validated.date, details: cleanObject({ listId, previousDate: sourceDate || undefined }), schemaVersion: 1, createdAt: serverTimestamp() });
+  });
+  return validated.date;
+}
+
+export async function importBinCollections(projectId: string, listId: string, input: unknown) {
+  const collections = parseBinCollectionImport(input);
+  const { db } = getFirebaseServices();
+  const batch = writeBatch(db);
+  collections.forEach((collection) => {
+    const ref = doc(db, "projects", projectId, "lists", listId, "items", collection.date);
+    batch.set(ref, { ...itemPayload(binCollectionItem(collection)), importSource: "bin-collections-json", updatedAt: serverTimestamp() }, { merge: true });
+  });
+  addModerationEvent(batch, projectId, "item-published", currentUid(), listId, { count: collections.length, source: "bin-collections-json" });
+  await batch.commit();
+  return { count: collections.length };
 }
 
 export async function importPublishedDirectoryItems(projectId: string, listId: string, items: Array<Partial<CommunityItem>>) {

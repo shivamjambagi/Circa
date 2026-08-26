@@ -62,7 +62,7 @@ function render(record: PublishedCommunityRecord) {
 
 function queryBins(question: string, records: PublishedCommunityRecord[], timezone: string, now: Date): CommunityQueryResult {
   const today = dateKeyInTimezone(now, timezone); const targetDate = targetDateFromQuestion(question, today);
-  const binWords = terms(question).filter((word) => ["recycling", "recycle", "general", "waste", "garden", "food", "brown", "green", "black", "blue"].includes(word));
+  const binWords = terms(question).filter((word) => ["recycling", "recycle", "general", "waste", "garden", "food", "brown", "green", "grey", "gray", "black", "blue"].includes(word));
   // Prefer explicit bin/schedule records, but keep backward compatibility for
   // older approved bin records that pre-date itemType/schedule metadata.
   // Directory/contact records are never allowed through this legacy fallback,

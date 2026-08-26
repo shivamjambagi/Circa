@@ -25,3 +25,11 @@ test("explicit scheduled bin records remain supported", () => {
   const result = queryCommunity("what bin is tomorrow", records, { now: new Date("2026-08-16T12:00:00Z"), timezone: "Europe/London" });
   assert.match(result.answer, /Blue bin/i);
 });
+
+test("canonical grey collections can be queried by colour", () => {
+  const records = [
+    { listId: "bins", listTitle: "Bin collections", itemId: "2026-08-18", title: "Grey", details: "", category: "Bin collections", itemType: "bin", bins: ["grey"], binType: "grey", schedule: { type: "once", firstCollectionDate: "2026-08-18" } },
+  ];
+  const result = queryCommunity("when is the next grey collection", records, { now: new Date("2026-08-17T12:00:00Z"), timezone: "Europe/London" });
+  assert.match(result.answer, /Grey/i);
+});

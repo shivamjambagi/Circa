@@ -1264,6 +1264,52 @@ footer p { color:var(--muted); font-size:13px; } footer button { margin-left:aut
 .community-explore-v2 > div button small { grid-column:1; color:#89847a; text-transform:capitalize; }
 .community-explore-v2 > div button i { position:absolute; right:14px; bottom:14px; font-style:normal; color:#88837a; }
 
+.bin-collections-view { width:min(900px,calc(100% - 48px)); margin:40px auto 90px; }
+.bin-collections-heading { margin-bottom:22px; }
+.bin-collections-heading h2 { margin:6px 0; font:520 clamp(36px,5vw,48px) var(--font-fraunces),Georgia,serif; }
+.bin-collections-heading > p:last-child,.bin-manager-preview > header p,.bin-import-card header p { margin:0; color:#77736b; font-size:10px; }
+.bin-month-list { display:grid; gap:18px; }
+.bin-month { padding:0; overflow:hidden; }
+.bin-month > header { padding:20px 22px 15px; border-bottom:1px solid rgba(34,34,31,.14); background:#faf7ef; }
+.bin-month > header h3 { margin:5px 0 0; font:520 30px var(--font-fraunces),Georgia,serif; }
+.bin-collection-row { min-height:64px; padding:13px 22px; display:grid; grid-template-columns:minmax(210px,1fr) 1fr; align-items:center; gap:20px; border-bottom:1px dashed rgba(34,34,31,.16); }
+.bin-collection-row:last-child { border-bottom:0; }
+.bin-collection-row time { font-size:11px; font-weight:700; }
+.bin-colour-list { display:flex; justify-content:flex-end; gap:7px; flex-wrap:wrap; }
+.bin-colour { padding:6px 9px; border:1px solid rgba(34,34,31,.18); font-size:8px; font-weight:800; text-transform:capitalize; }
+.bin-green { background:#e4eddf; }.bin-blue { background:#e0ebf2; }.bin-grey { background:#e7e7e4; }.bin-brown { background:#eee3d6; }
+.bin-schedule-empty { padding:26px; }
+.bin-schedule-empty p { margin:7px 0 0; color:#77736b; font-size:10px; }
+
+.bin-manager-layout { display:grid; grid-template-columns:minmax(280px,360px) 1fr; gap:18px; align-items:start; }
+.bin-collection-form,.bin-existing,.bin-import-card { padding:24px; }
+.bin-collection-form { display:grid; gap:15px; }
+.bin-collection-form h3,.bin-manager-preview h3,.bin-import-card h3 { margin:4px 0 0; font:520 28px var(--font-fraunces),Georgia,serif; }
+.bin-collection-form > label,.bin-collection-form fieldset { display:grid; gap:7px; margin:0; color:#555; font-size:9px; font-weight:700; }
+.bin-collection-form input[type="date"] { min-height:42px; padding:9px; border:1px solid #ccc; background:#faf8f1; }
+.bin-collection-form fieldset { padding:0; border:0; }
+.bin-picker { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+.bin-choice { min-height:39px; padding:8px 10px; display:flex; align-items:center; gap:8px; border:1px solid rgba(34,34,31,.16); cursor:pointer; text-transform:capitalize; }
+.bin-choice input { accent-color:#70664f; }
+.bin-form-actions,.bin-existing-row > div { display:flex; gap:7px; flex-wrap:wrap; }
+.bin-existing-row { min-height:66px; padding:12px 0; display:flex; align-items:center; justify-content:space-between; gap:16px; border-top:1px dashed rgba(34,34,31,.16); }
+.bin-existing-row span > * { display:block; }
+.bin-existing-row span small { margin-top:4px; color:#77736b; font-size:8px; }
+.bin-existing-row button { min-height:32px; padding:0 9px; border:1px solid rgba(34,34,31,.2); background:#faf8f1; cursor:pointer; font-size:8px; }
+.bin-legacy-note { margin:14px 0 0; padding:11px; background:#f6f1e5; color:#6f695f; font-size:9px; line-height:1.5; }
+.bin-manager-preview { margin-top:28px; }
+.bin-manager-preview > header { margin-bottom:13px; }
+.bin-import-card { margin-top:28px; }
+.bin-import-card > header { margin-bottom:15px; }
+.bin-import-file { min-height:72px; padding:13px; display:flex; align-items:center; gap:13px; border:1px dashed rgba(34,34,31,.3); background:#faf8f1; cursor:pointer; }
+.bin-import-file input { max-width:190px; font-size:9px; }
+.bin-import-file span > * { display:block; }
+.bin-import-file small { margin-top:4px; color:#77736b; font-size:8px; }
+.bin-import-review { margin-top:15px; padding:16px; border-left:3px solid #c8a84f; background:#f7f3e8; }
+.bin-import-review > div { display:flex; gap:7px; flex-wrap:wrap; margin:10px 0 14px; }
+.bin-import-review > div span { padding:6px 8px; background:#fffefa; font-size:8px; }
+.bin-import-review > div span strong { margin-left:7px; }
+
 .reminder-toast { position:fixed; z-index:120; right:22px; bottom:22px; width:min(360px,calc(100vw - 32px)); padding:18px 44px 18px 18px; display:grid; gap:5px; border:1px solid rgba(34,34,31,.22); background:#fff8df; box-shadow:0 18px 50px rgba(34,34,31,.18); animation:circaReminderIn .28s ease-out; }
 .reminder-toast > button { position:absolute; top:8px; right:8px; width:28px; height:28px; border:0; background:transparent; cursor:pointer; color:#625f57; font-size:18px; }
 .reminder-toast-kicker { color:#8a6f30; font:800 8px var(--font-manrope),sans-serif; letter-spacing:.12em; text-transform:uppercase; }
@@ -1348,6 +1394,7 @@ footer p { color:var(--muted); font-size:13px; } footer button { margin-left:aut
   .home-status-grid { grid-template-columns:1fr 1fr; }
   .home-status-card.reminder-status { grid-column:1/-1; }
   .community-explore-v2 > div { grid-template-columns:repeat(2,1fr); }
+  .bin-manager-layout { grid-template-columns:1fr; }
   .admin-content-workspace,.reminder-workspace { grid-template-columns:1fr; }
   .admin-section-panel { order:0; }
   .member-rows-v2 > div { grid-template-columns:42px 1fr auto; }
@@ -1357,6 +1404,11 @@ footer p { color:var(--muted); font-size:13px; } footer button { margin-left:aut
   .community-home-intro,.manage-page-heading { align-items:flex-start; flex-direction:column; gap:14px; }
   .home-quick-actions { justify-content:flex-start; }
   .home-status-grid,.community-snapshot,.community-explore-v2 > div,.review-change-list { grid-template-columns:1fr; }
+  .bin-collections-view { width:calc(100% - 28px); margin-top:24px; }
+  .bin-collection-row { grid-template-columns:1fr; gap:9px; }
+  .bin-colour-list { justify-content:flex-start; }
+  .bin-picker { grid-template-columns:1fr; }
+  .bin-import-file { align-items:flex-start; flex-direction:column; }
   .community-snapshot > * { border-right:0; border-bottom:1px solid rgba(34,34,31,.12); }
   .community-snapshot > *:last-child { border-bottom:0; }
   .home-status-card.reminder-status { grid-column:auto; }

@@ -141,6 +141,16 @@ test("Community reminders appear on Home and can raise an in-app toast", async (
   assert.match(source, /added to Community Home/);
 });
 
+test("Community Home places its summary row before the large status cards", async () => {
+  const source = await readFile(new URL("../app/community/[projectId]/CommunityClient.tsx", import.meta.url), "utf8");
+  const home = source.slice(source.indexOf("function CommunityHome"), source.indexOf("function ContactsView"));
+  const summaryIndex = home.indexOf('className="community-snapshot"');
+  const cardsIndex = home.indexOf('className="home-status-grid"');
+  assert.ok(summaryIndex >= 0 && cardsIndex > summaryIndex, "summary row must render before the large status cards");
+  assert.equal(home.match(/className="community-snapshot"/g)?.length, 1);
+  assert.equal(home.match(/className="home-status-grid"/g)?.length, 1);
+});
+
 test("Admin Community forms are focused rather than survey-like", async () => {
   const source = await readFile(new URL("../app/community/[projectId]/CommunityClient.tsx", import.meta.url), "utf8");
   const fields = source.slice(source.indexOf("function ItemFields"), source.indexOf("function ManageView"));

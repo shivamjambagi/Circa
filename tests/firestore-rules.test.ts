@@ -4,7 +4,7 @@ import { assertFails, assertSucceeds, initializeTestEnvironment, type RulesTestE
 import { collection, deleteDoc, doc, getDoc, getDocs, serverTimestamp, setDoc, updateDoc, writeBatch } from "firebase/firestore";
 
 let environment: RulesTestEnvironment;
-const ownerId = "owner_user"; const memberId = "member_user"; const otherId = "other_user"; const projectId = "community_project";
+const ownerId = "owner_user"; const adminId = "admin_user"; const memberId = "member_user"; const otherId = "other_user"; const projectId = "community_project";
 const auth = (uid: string) => environment.authenticatedContext(uid, { firebase: { sign_in_provider: "password" } }).firestore();
 
 before(async () => {
@@ -17,10 +17,13 @@ beforeEach(async () => {
     const db = context.firestore();
     await setDoc(doc(db, "projects", projectId), { name: "Prestwich", description: "Approved local information", location: "Manchester", projectMode: "community", category: "community", ownerId, schemaVersion: 1 });
     await setDoc(doc(db, "projects", projectId, "members", ownerId), { uid: ownerId, role: "owner", status: "active", joinedViaInviteId: "", consented: true, consentVersion: 1, joinedAt: new Date(), schemaVersion: 2 });
+    await setDoc(doc(db, "projects", projectId, "members", adminId), { uid: adminId, role: "admin", status: "active", joinedViaInviteId: "invite_123456789012345678901234", consented: true, consentVersion: 1, joinedAt: new Date(), schemaVersion: 2 });
     await setDoc(doc(db, "projects", projectId, "members", memberId), { uid: memberId, role: "member", status: "active", joinedViaInviteId: "invite_123456789012345678901234", consented: true, consentVersion: 1, joinedAt: new Date(), schemaVersion: 2 });
     await setDoc(doc(db, "projects", projectId, "memberDirectory", ownerId), { uid: ownerId, displayName: "Owner", role: "owner", status: "active", joinedAt: new Date(), schemaVersion: 1 });
     await setDoc(doc(db, "projects", projectId, "memberDirectory", memberId), { uid: memberId, displayName: "Member", role: "member", status: "active", joinedAt: new Date(), schemaVersion: 1 });
     await setDoc(doc(db, "projects", projectId, "lists", "notices"), { title: "Notices", order: 1, schemaVersion: 1 });
+    await setDoc(doc(db, "projects", projectId, "lists", "bins"), { title: "Bin collections", listType: "bin", order: 2, schemaVersion: 2 });
+    await setDoc(doc(db, "projects", projectId, "lists", "bins", "items", "2026-09-01"), { title: "Green", itemType: "bin", date: "2026-09-01", bins: ["green"], schedule: { type: "once", firstCollectionDate: "2026-09-01" }, order: 20260901, schemaVersion: 2 });
     await setDoc(doc(db, "projects", projectId, "lists", "notices", "items", "approved"), { title: "Approved", details: "Published", order: 1, contentVersion: 3, schemaVersion: 2 });
     await setDoc(doc(db, "projects", projectId, "lists", "notices", "items", "member-owned"), { title: "Member contribution", createdBy: memberId, order: 2, contentVersion: 1, schemaVersion: 2 });
     await setDoc(doc(db, "projects", projectId, "lists", "notices", "items", "other-owned"), { title: "Someone else contribution", createdBy: otherId, order: 3, schemaVersion: 2 });
@@ -49,6 +52,17 @@ describe("Community database permissions", () => {
     const db = auth(memberId);
     await assertSucceeds(getDocs(collection(db, "projects", projectId, "memberDirectory")));
     await assertFails(getDocs(collection(db, "projects", projectId, "members")));
+  });
+
+  it("lets active members read Bin Collections while only owners and admins can modify them", async () => {
+    const itemPath = ["projects", projectId, "lists", "bins", "items"] as const;
+    await assertSucceeds(getDocs(collection(auth(memberId), ...itemPath)));
+    await assertFails(getDocs(collection(auth(otherId), ...itemPath)));
+    await assertFails(setDoc(doc(auth(memberId), ...itemPath, "2026-09-08"), { title: "Blue + Brown", itemType: "bin", date: "2026-09-08", bins: ["blue", "brown"], order: 20260908, schemaVersion: 2 }));
+    await assertSucceeds(setDoc(doc(auth(ownerId), ...itemPath, "2026-09-08"), { title: "Blue + Brown", itemType: "bin", date: "2026-09-08", bins: ["blue", "brown"], order: 20260908, schemaVersion: 2 }));
+    await assertSucceeds(updateDoc(doc(auth(adminId), ...itemPath, "2026-09-08"), { bins: ["grey"], title: "Grey" }));
+    await assertFails(deleteDoc(doc(auth(memberId), ...itemPath, "2026-09-08")));
+    await assertSucceeds(deleteDoc(doc(auth(adminId), ...itemPath, "2026-09-08")));
   });
 
   it("blocks member publication, review, self-promotion and unrelated Community reads", async () => {

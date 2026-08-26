@@ -1,6 +1,7 @@
 export type MemberRole = "owner" | "admin" | "member";
 export type ProjectMode = "map" | "community" | "network";
 export type CommunityListType = "directory" | "event" | "bin" | "school" | "contact" | "custom";
+export type BinValue = "green" | "blue" | "grey" | "brown";
 
 export type PreviewSection = { id: string; title: string; description?: string; iconKey?: string };
 
@@ -78,6 +79,7 @@ export type CommunityItem = {
   location?: string;
   schoolType?: string;
   binType?: string;
+  bins?: BinValue[];
   schedule?: CollectionSchedule;
   timezone?: string;
   areaLabel?: string;

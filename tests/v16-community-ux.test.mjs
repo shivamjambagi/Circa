@@ -29,6 +29,7 @@ test("Community member navigation is deliberately small and role-aware", async (
   const source = await readFile(new URL("../app/community/[projectId]/CommunityClient.tsx", import.meta.url), "utf8");
   assert.match(source, /\["home", "Home"\]/);
   assert.match(source, /\["contacts", "Contacts"\]/);
+  assert.match(source, /\["collections", "Bin Collections"\]/);
   assert.match(source, /\["events", "Events"\]/);
   assert.match(source, /canReview \? \[\["manage"/);
   assert.doesNotMatch(source, /\["ask", "Ask"\]/);

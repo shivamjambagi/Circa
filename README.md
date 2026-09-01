@@ -3,8 +3,7 @@
 > A visual relationship-mapping platform for understanding how people, communities and professional networks are connected.
 
 **Circa is currently in public beta.**
-
-[Open the live platform](https://circaa.netlify.app/)
+/)
 
 ---
 

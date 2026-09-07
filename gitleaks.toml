@@ -1,0 +1,35 @@
+﻿title = "Circa Gitleaks configuration"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "gcp-api-key"
+
+  [[rules.allowlists]]
+  description = "Historical public Firebase web API key in env example"
+  condition = "AND"
+  commits = ["c393f2bf9982e8a98d208bfa4fe56fa7f3223d79"]
+  paths = ['''^\.env\.example$''']
+  regexTarget = "line"
+  regexes = ['''^NEXT_PUBLIC_FIREBASE_API_KEY\s*=''']
+
+  [[rules.allowlists]]
+  description = "Historical public Firebase web API key in client config"
+  condition = "AND"
+  commits = ["c393f2bf9982e8a98d208bfa4fe56fa7f3223d79"]
+  paths = ['''^app/firebase/client\.ts$''']
+  regexTarget = "line"
+  regexes = ['''apiKey\s*:''']
+
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Historical public Firebase App Check site key"
+  condition = "AND"
+  commits = ["c393f2bf9982e8a98d208bfa4fe56fa7f3223d79"]
+  paths = ['''^\.env\.example$''']
+  regexTarget = "line"
+  regexes = ['''^NEXT_PUBLIC_FIREBASE_APPCHECK_SITE_KEY\s*=''']
+
